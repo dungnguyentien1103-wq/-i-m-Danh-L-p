@@ -3,93 +3,161 @@
 <head>
     <meta charset="UTF-8">
     <title>Bảng Điều Hành Cán Sự Lớp</title>
+
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f6f9; }
-        .section { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #ddd; }
+        .section { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #ddd; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         label { font-weight: bold; display: block; margin-top: 10px; }
         input, select, button { padding: 8px; margin-top: 5px; }
         .btn-save { background: #28a745; color: white; border: none; cursor: pointer; padding: 10px 20px; font-weight: bold; border-radius: 4px; }
         .btn-export { background: #17a2b8; color: white; border: none; cursor: pointer; padding: 8px 16px; border-radius: 4px; }
         .btn-delete { background: #dc3545; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; }
         .btn-resolve { background: #007bff; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; }
-        .btn-quick { background: #6c757d; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
-        #map { height: 350px; width: 100%; border-radius: 8px; margin-top: 10px; }
+        .btn-quick { background: #6c757d; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 3px; }
+        .btn-quick:hover { background: #495057; }
+        .btn-apply { background: #007bff; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 5px; }
+        #map { height: 380px; width: 100%; border-radius: 8px; margin-top: 10px; border: 1px solid #ccc; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
         th { background-color: #e9ecef; }
-        .badge-err { background: #ffc107; padding: 3px 6px; border-radius: 4px; font-size: 12px; }
+        .badge-err { background: #ffc107; color: #212529; padding: 3px 6px; border-radius: 4px; font-size: 12px; }
+        .coord-group { display: flex; gap: 15px; margin-top: 10px; flex-wrap: wrap; }
+        .coord-box { flex: 1; min-width: 200px; background: #f8f9fa; padding: 10px; border-radius: 6px; border: 1px solid #e9ecef; }
     </style>
 </head>
 <body>
-    <h1>Trang Quản Lý Điểm Danh Cán Sự</h1>
+    <h1>Trang Quản Lý Điểm Danh (Dành cho Cán sự)</h1>
 
     <!-- 1. BỘ ĐIỀU KHIỂN CỔNG -->
     <div class="section">
-        <h2>1. Quản Lý Cổng & Bản Đồ GPS</h2>
-        <label><input type="checkbox" id="is_open"> <b style="color: green;">BẬT Cổng Điểm Danh</b></label>
+        <h2>1. Quản Lý Cổng Điểm Danh</h2>
+        <label>
+            <input type="checkbox" id="is_open"> <b style="color: green;">BẬT / TẮT Cổng điểm danh</b>
+        </label>
 
-        <label>Chọn Ngày Điểm Danh:</label>
+        <label>Chọn Ngày Điểm Danh (Nhãn lưu danh sách):</label>
         <input type="date" id="selected_date">
 
-        <label>Chế độ vị trí:</label>
+        <label>Hẹn Giờ Tự Động Đóng Cổng:</label>
+        <input type="datetime-local" id="close_at">
+
+        <hr style="margin: 20px 0;">
+        <h3>Cấu Hình Giới Hạn Vị Trí (Google Maps)</h3>
+        
+        <label>Chế độ kiểm tra vị trí:</label>
         <select id="network_mode" onchange="toggleMapDisplay()">
-            <option value="all">Mọi vị trí (Tự do)</option>
-            <option value="gps_location">Bắt buộc điểm danh tại Vị Trí Bản Đồ</option>
+            <option value="all">Mọi loại mạng & vị trí (Tự do)</option>
+            <option value="gps_location">Bắt buộc điểm danh tại Vị Trí Chọn Trên Bản Đồ</option>
         </select>
 
         <div id="map-container" style="display:none; margin-top: 15px;">
-            <p><i>Hệ thống tự định vị GPS của bạn. Kéo Marker để điều chỉnh vị trí lớp học.</i></p>
-            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                <input type="number" step="any" id="class_lat" placeholder="Vĩ độ">
-                <input type="number" step="any" id="class_lng" placeholder="Kinh độ">
-                <button class="btn-quick" style="background:#17a2b8;" onclick="getCurrentGPS(true)">🎯 Cập nhật GPS Của Tôi</button>
+            <p><i><b>Mẹo:</b> Hệ thống đã tự động định vị vị trí của bạn. Bạn cũng có thể kéo Marker hoặc gõ tọa độ rồi bấm "Áp dụng".</i></p>
+            
+            <div class="coord-group">
+                <div class="coord-box">
+                    <label>Vĩ độ (Latitude):</label>
+                    <input type="number" step="any" id="class_lat" style="width: 100%;" placeholder="Vĩ độ">
+                </div>
+                <div class="coord-box">
+                    <label>Kinh độ (Longitude):</label>
+                    <input type="number" step="any" id="class_lng" style="width: 100%;" placeholder="Kinh độ">
+                </div>
+                <div class="coord-box" style="flex: 0 0 100%;">
+                    <button class="btn-apply" onclick="applyManualCoords()">📍 Áp Dụng Tọa Độ Nhập Tay</button>
+                    <button class="btn-quick" style="background:#17a2b8;" onclick="getCurrentGPS(true)">🎯 Cập Nhật Lại GPS Của Tôi</button>
+                    <button class="btn-quick" style="background:#e83e8c;" onclick="switchMapStyle('roadmap')">🗺️ Bản đồ Đường</button>
+                    <button class="btn-quick" style="background:#fd7e14;" onclick="switchMapStyle('satellite')">🛰️ Bản đồ Vệ Tinh</button>
+                </div>
             </div>
-            <div>
-                <label>Bán kính (Mét):</label>
-                <input type="number" id="max_distance_meters" value="100" style="width: 100px;" oninput="updateRadiusFromInput()">
+
+            <div class="coord-group">
+                <div class="coord-box" style="flex: 1;">
+                    <label>Bán kính cho phép (Mét):</label>
+                    <input type="number" id="max_distance_meters" value="100" min="10" max="2000" style="width: 120px;" oninput="updateRadiusFromInput()">
+                    <span style="margin-left: 10px;">Chọn nhanh:</span>
+                    <button class="btn-quick" onclick="setQuickRadius(50)">50m</button>
+                    <button class="btn-quick" onclick="setQuickRadius(100)">100m</button>
+                    <button class="btn-quick" onclick="setQuickRadius(200)">200m</button>
+                    <button class="btn-quick" onclick="setQuickRadius(500)">500m</button>
+                </div>
             </div>
+
             <div id="map"></div>
         </div>
 
         <br>
-        <button class="btn-save" onclick="saveConfig()">LƯU CẤU HÌNH</button>
+        <button class="btn-save" onclick="saveConfig()">LƯU TẤT CẢ CẤU HÌNH</button>
         <span id="save-msg" style="color: green; font-weight: bold; margin-left: 10px;"></span>
     </div>
 
-    <!-- 2. DANH SÁCH BÁO LỖI -->
+    <!-- 2. BÁO CÁO LỖI THIẾT BỊ TỪ SINH VIÊN -->
     <div class="section">
-        <h2>2. Danh Sách Yêu Cầu Reset Thiết Bị</h2>
+        <h2>2. Danh Sách Yêu Cầu Báo Lỗi Thiết Bị</h2>
         <table>
             <thead>
-                <tr><th>Thời Gian</th><th>MSSV</th><th>Họ Tên</th><th>Lý Do</th><th>Hành Động</th></tr>
+                <tr>
+                    <th>Thời Gian</th>
+                    <th>MSSV</th>
+                    <th>Họ Tên</th>
+                    <th>Lý Do Báo Lỗi</th>
+                    <th>Hành Động</th>
+                </tr>
             </thead>
-            <tbody id="tbl-bao-loi"><tr><td colspan="5">Không có yêu cầu nào.</td></tr></tbody>
+            <tbody id="tbl-bao-loi">
+                <tr><td colspan="5">Không có báo lỗi nào chưa xử lý.</td></tr>
+            </tbody>
         </table>
     </div>
 
-    <!-- 3. DANH SÁCH ĐIỂM DANH -->
+    <!-- 3. QUẢN LÝ DỮ LIỆU ĐIỂM DANH -->
     <div class="section">
         <h2>3. Danh Sách Điểm Danh Đã Ghi Nhận</h2>
-        <label>Lọc theo ngày:</label>
+        <label>Lọc danh sách theo ngày:</label>
         <input type="date" id="filter-view-date" onchange="loadDiemDanhList()">
+        <button onclick="loadDiemDanhList()">Xem Danh Sách</button>
+
         <table>
             <thead>
-                <tr><th>STT</th><th>MSSV</th><th>Họ và Tên</th><th>Ngày</th><th>Giờ</th><th>Mã Thiết Bị</th><th>Xóa</th></tr>
+                <tr>
+                    <th>STT</th>
+                    <th>MSSV</th>
+                    <th>Họ và Tên</th>
+                    <th>Ngày</th>
+                    <th>Giờ</th>
+                    <th>Mã Thiết Bị</th>
+                    <th>Xóa</th>
+                </tr>
             </thead>
-            <tbody id="tbl-diem-danh"><tr><td colspan="7">Đang tải dữ liệu...</td></tr></tbody>
+            <tbody id="tbl-diem-danh">
+                <tr><td colspan="7">Đang tải dữ liệu...</td></tr>
+            </tbody>
         </table>
     </div>
 
-    <!-- 4. XUẤT EXCEL -->
+    <!-- 4. XUẤT FILE EXCEL -->
     <div class="section">
         <h2>4. Xuất Báo Cáo Excel</h2>
-        <button class="btn-export" onclick="exportData()">Tải File Excel Tất Cả Dữ Liệu</button>
+        <select id="export-type" onchange="toggleExportInput()">
+            <option value="all">Tất cả dữ liệu</option>
+            <option value="day">Theo ngày cụ thể</option>
+            <option value="month">Theo tháng cụ thể</option>
+        </select>
+
+        <span id="input-day" style="display:none; margin-left: 10px;">
+            <input type="date" id="export-day-val">
+        </span>
+        <span id="input-month" style="display:none; margin-left: 10px;">
+            <input type="month" id="export-month-val">
+        </span>
+
+        <button class="btn-export" onclick="exportData()">Tải File Excel</button>
     </div>
 
     <script>
         let map, marker, circle, googleTileLayer;
+        let currentMapStyle = 'm'; 
 
         document.addEventListener("DOMContentLoaded", async () => {
             const today = new Date().toISOString().split('T')[0];
@@ -104,39 +172,89 @@
         function initMap(lat, lng, radius) {
             if (!map) {
                 map = L.map('map').setView([lat, lng], 17);
-                googleTileLayer = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-                    maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+                
+                googleTileLayer = L.tileLayer('https://{s}.google.com/vt/lyrs=' + currentMapStyle + '&x={x}&y={y}&z={z}', {
+                    maxZoom: 20,
+                    subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+                    attribution: '© Google Maps'
                 }).addTo(map);
 
                 marker = L.marker([lat, lng], {draggable: true}).addTo(map);
-                circle = L.circle([lat, lng], {radius: radius, color: 'red'}).addTo(map);
+                circle = L.circle([lat, lng], {radius: radius, color: 'red', fillColor: '#f03', fillOpacity: 0.25}).addTo(map);
+
+                map.on('click', (e) => {
+                    updateCoordsUI(e.latlng.lat, e.latlng.lng);
+                });
 
                 marker.on('dragend', (e) => {
                     const pos = marker.getLatLng();
-                    document.getElementById('class_lat').value = pos.lat.toFixed(6);
-                    document.getElementById('class_lng').value = pos.lng.toFixed(6);
-                    circle.setLatLng(pos);
+                    updateCoordsUI(pos.lat, pos.lng);
                 });
             }
-            setTimeout(() => map.invalidateSize(), 300);
+
+            setTimeout(() => {
+                map.invalidateSize();
+                updateMapPosition(lat, lng, radius);
+            }, 300);
         }
 
+        function switchMapStyle(style) {
+            currentMapStyle = (style === 'satellite') ? 's,h' : 'm';
+            if (googleTileLayer && map) {
+                map.removeLayer(googleTileLayer);
+                googleTileLayer = L.tileLayer('https://{s}.google.com/vt/lyrs=' + currentMapStyle + '&x={x}&y={y}&z={z}', {
+                    maxZoom: 20,
+                    subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+                    attribution: '© Google Maps'
+                }).addTo(map);
+            }
+        }
+
+        function updateMapPosition(lat, lng, radius) {
+            if (map && marker && circle) {
+                const newLatLng = new L.LatLng(lat, lng);
+                marker.setLatLng(newLatLng);
+                circle.setLatLng(newLatLng);
+                if (radius) circle.setRadius(radius);
+                map.panTo(newLatLng);
+            }
+        }
+
+        function updateCoordsUI(newLat, newLng) {
+            document.getElementById('class_lat').value = parseFloat(newLat).toFixed(6);
+            document.getElementById('class_lng').value = parseFloat(newLng).toFixed(6);
+            updateMapPosition(newLat, newLng);
+        }
+
+        function applyManualCoords() {
+            const lat = parseFloat(document.getElementById('class_lat').value);
+            const lng = parseFloat(document.getElementById('class_lng').value);
+            const radius = parseFloat(document.getElementById('max_distance_meters').value) || 100;
+
+            if (isNaN(lat) || isNaN(lng)) {
+                alert("Vui lòng nhập vĩ độ và kinh độ hợp lệ!");
+                return;
+            }
+            updateMapPosition(lat, lng, radius);
+        }
+
+        // Hàm lấy vị trí GPS người dùng
         function getCurrentGPS(showAlert = false) {
             if ("geolocation" in navigator) {
-                navigator.geolocation.getCurrentPosition((pos) => {
-                    const lat = pos.coords.latitude;
-                    const lng = pos.coords.longitude;
-                    document.getElementById('class_lat').value = lat.toFixed(6);
-                    document.getElementById('class_lng').value = lng.toFixed(6);
-                    if (map && marker) {
-                        const newPos = new L.LatLng(lat, lng);
-                        marker.setLatLng(newPos);
-                        circle.setLatLng(newPos);
-                        map.panTo(newPos);
-                    }
-                    if (showAlert) alert("Đã lấy vị trí GPS thành công!");
-                });
+                navigator.geolocation.getCurrentPosition((position) => {
+                    updateCoordsUI(position.coords.latitude, position.coords.longitude);
+                    if (showAlert) alert("Đã cập nhật vị trí của bạn thành công!");
+                }, (err) => {
+                    if (showAlert) alert("Không thể lấy vị trí GPS. Vui lòng bật định vị trên thiết bị!");
+                }, { enableHighAccuracy: true, timeout: 5000 });
+            } else {
+                if (showAlert) alert("Trình duyệt không hỗ trợ định vị!");
             }
+        }
+
+        function setQuickRadius(meters) {
+            document.getElementById('max_distance_meters').value = meters;
+            updateRadiusFromInput();
         }
 
         function updateRadiusFromInput() {
@@ -149,9 +267,19 @@
             const container = document.getElementById('map-container');
             if (mode === 'gps_location') {
                 container.style.display = 'block';
+                
+                let lat = parseFloat(document.getElementById('class_lat').value);
+                let lng = parseFloat(document.getElementById('class_lng').value);
+                const radius = parseFloat(document.getElementById('max_distance_meters').value) || 100;
+
                 setTimeout(() => {
-                    initMap(16.047079, 108.206230, 100);
-                    getCurrentGPS(false);
+                    if (!lat || !lng) {
+                        initMap(16.047079, 108.206230, radius); 
+                        getCurrentGPS(false);
+                    } else {
+                        initMap(lat, lng, radius);
+                        getCurrentGPS(false);
+                    }
                 }, 150);
             } else {
                 container.style.display = 'none';
@@ -159,28 +287,38 @@
         }
 
         async function loadConfig() {
-            const res = await fetch('/api/admin/get-config');
-            const data = await res.json();
-            document.getElementById('is_open').checked = data.is_open === 'true';
-            document.getElementById('selected_date').value = data.selected_date || '';
-            document.getElementById('network_mode').value = data.network_mode || 'all';
-            document.getElementById('class_lat').value = data.class_lat || '';
-            document.getElementById('class_lng').value = data.class_lng || '';
-            document.getElementById('max_distance_meters').value = data.max_distance_meters || '100';
-            toggleMapDisplay();
+            try {
+                const res = await fetch('/api/admin/get-config');
+                const data = await res.json();
+                
+                document.getElementById('is_open').checked = data.is_open === 'true';
+                document.getElementById('selected_date').value = data.selected_date || new Date().toISOString().split('T')[0];
+                document.getElementById('close_at').value = data.close_at || '';
+                document.getElementById('network_mode').value = data.network_mode || 'all';
+                document.getElementById('class_lat').value = data.class_lat || '';
+                document.getElementById('class_lng').value = data.class_lng || '';
+                document.getElementById('max_distance_meters').value = data.max_distance_meters || '100';
+
+                toggleMapDisplay();
+            } catch (err) {
+                console.error("Lỗi nạp cấu hình:", err);
+            }
         }
 
         async function saveConfig() {
             const payload = {
                 is_open: document.getElementById('is_open').checked,
                 selected_date: document.getElementById('selected_date').value,
+                close_at: document.getElementById('close_at').value,
                 network_mode: document.getElementById('network_mode').value,
                 class_lat: document.getElementById('class_lat').value,
                 class_lng: document.getElementById('class_lng').value,
                 max_distance_meters: document.getElementById('max_distance_meters').value
             };
+
             const res = await fetch('/api/admin/update-config', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
             const result = await res.json();
@@ -191,14 +329,19 @@
         async function loadDiemDanhList() {
             const dateVal = document.getElementById('filter-view-date').value;
             const tbody = document.getElementById('tbl-diem-danh');
+            
             try {
                 const res = await fetch(`/api/admin/list-diem-danh?date=${dateVal}`);
+                if (!res.ok) throw new Error("API Lỗi");
+                
                 const list = await res.json();
                 tbody.innerHTML = '';
-                if (!list.length) {
-                    tbody.innerHTML = '<tr><td colspan="7">Không có dữ liệu ngày này.</td></tr>';
+
+                if (!Array.isArray(list) || list.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7">Không có dữ liệu điểm danh cho ngày này.</td></tr>';
                     return;
                 }
+
                 list.forEach((item, index) => {
                     tbody.innerHTML += `
                         <tr>
@@ -207,57 +350,78 @@
                             <td>${item.ho_ten}</td>
                             <td>${item.ngay}</td>
                             <td>${item.thoi_gian}</td>
-                            <td><small>${item.device_id.substring(0, 8)}...</small></td>
+                            <td><small>${item.device_id ? item.device_id.substring(0, 8) + '...' : 'N/A'}</small></td>
                             <td><button class="btn-delete" onclick="deleteRecord(${item.id})">Xóa</button></td>
-                        </tr>`;
+                        </tr>
+                    `;
                 });
-            } catch(e) { tbody.innerHTML = '<tr><td colspan="7">Lỗi tải dữ liệu.</td></tr>'; }
+            } catch (err) {
+                console.error("Lỗi tải điểm danh:", err);
+                tbody.innerHTML = '<tr><td colspan="7" style="color:red;">Không thể kết nối danh sách điểm danh hoặc dữ liệu rỗng.</td></tr>';
+            }
         }
 
         async function deleteRecord(id) {
-            if (!confirm('Xóa bản ghi này?')) return;
+            if (!confirm('Bạn có chắc chắn muốn xóa lượt điểm danh này không?')) return;
             await fetch('/api/admin/delete-diem-danh', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id })
             });
             loadDiemDanhList();
         }
 
         async function loadBaoLoiList() {
-            const res = await fetch('/api/admin/list-bao-loi');
-            const list = await res.json();
-            const tbody = document.getElementById('tbl-bao-loi');
-            tbody.innerHTML = '';
-            if (!list.length) {
-                tbody.innerHTML = '<tr><td colspan="5">Không có yêu cầu báo lỗi.</td></tr>';
-                return;
-            }
-            list.forEach(item => {
-                tbody.innerHTML += `
-                    <tr>
-                        <td>${item.thoi_gian}</td>
-                        <td><b>${item.mssv}</b></td>
-                        <td>${item.ho_ten}</td>
-                        <td><span class="badge-err">${item.ly_do}</span></td>
-                        <td>
-                            <button class="btn-resolve" onclick="resolveBaoLoi(${item.id}, '${item.device_id}', 'reset')">Reset Máy</button>
-                            <button class="btn-delete" onclick="resolveBaoLoi(${item.id}, '${item.device_id}', 'dismiss')">Bỏ Qua</button>
-                        </td>
-                    </tr>`;
-            });
+            try {
+                const res = await fetch('/api/admin/list-bao-loi');
+                const list = await res.json();
+                const tbody = document.getElementById('tbl-bao-loi');
+                tbody.innerHTML = '';
+
+                if (!Array.isArray(list) || list.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5">Không có yêu cầu báo lỗi nào chưa xử lý.</td></tr>';
+                    return;
+                }
+
+                list.forEach(item => {
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${item.thoi_gian} (${item.ngay})</td>
+                            <td><b>${item.mssv}</b></td>
+                            <td>${item.ho_ten}</td>
+                            <td><span class="badge-err">${item.ly_do}</span></td>
+                            <td>
+                                <button class="btn-resolve" onclick="resolveBaoLoi(${item.id}, '${item.device_id}', 'reset')">Reset Thiết Bị</button>
+                                <button class="btn-delete" onclick="resolveBaoLoi(${item.id}, '${item.device_id}', 'dismiss')">Bỏ Qua</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+            } catch(e) {}
         }
 
         async function resolveBaoLoi(id, device_id, action) {
             await fetch('/api/admin/resolve-bao-loi', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id, device_id, action })
             });
             loadBaoLoiList();
             loadDiemDanhList();
         }
 
+        function toggleExportInput() {
+            const type = document.getElementById('export-type').value;
+            document.getElementById('input-day').style.display = type === 'day' ? 'inline' : 'none';
+            document.getElementById('input-month').style.display = type === 'month' ? 'inline' : 'none';
+        }
+
         function exportData() {
-            window.location.href = `/api/admin/export?type=all`;
+            const type = document.getElementById('export-type').value;
+            let val = '';
+            if (type === 'day') val = document.getElementById('export-day-val').value;
+            if (type === 'month') val = document.getElementById('export-month-val').value;
+            window.location.href = `/api/admin/export?type=${type}&value=${val}`;
         }
     </script>
 </body>
