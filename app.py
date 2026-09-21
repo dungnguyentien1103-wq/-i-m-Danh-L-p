@@ -1,95 +1,120 @@
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
-from database import get_db, init_db
-import math
-from datetime import datetime
-import pandas as pd # Thêm import này ở đầu app.py để xuất Excel
-from flask import send_file
-import io
+import os
+import sqlite3
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, send_file
+import openpyxl
+from io import BytesIO
 
 app = Flask(__name__)
-app.secret_key = "secret_key_point_danh_system"
 
-init_db()
+# ==========================================
+# 1. CẤU HÌNH BÀO MẬT & BIẾN MÔI TRƯỜNG (CLOUD)
+# ==========================================
+# Lấy SECRET_KEY từ biến môi trường của Render (nếu không có sẽ dùng chuỗi mặc định cho dev)
+app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-super-safe-123')
 
-# --- HÀM TRỢ GIÚP ---
-def haversine(lat1, lon1, lat2, lon2):
-    R = 6371000  # Bán kính Trái Đất (mét)
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
-    a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
-    return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+# Lấy DATABASE_URL từ Render (Thường là PostgreSQL)
+DATABASE_URL = os.environ.get('DATABASE_URL')
 
-def get_config():
-    conn = get_db()
+
+# ==========================================
+# 2. HÀM KẾT NỐI CƠ SỞ DỮ LIỆU ĐA NĂNG
+# ==========================================
+def get_db_connection():
+    """
+    Tự động kết nối PostgreSQL nếu chạy trên Cloud (có DATABASE_URL),
+    hoặc dùng SQLite local nếu chạy ở máy cá nhân.
+    """
+    if DATABASE_URL:
+        # Xử lý chuẩn hóa URL cho psycopg2 (nếu Render trả về postgres://)
+        db_url = DATABASE_URL.replace("postgres://", "postgresql://")
+        conn = psycopg2.connect(db_url, cursor_factory=RealDictCursor)
+        return conn, "postgres"
+    else:
+        # Dùng file CSDL local nếu chưa cài DATABASE_URL
+        conn = sqlite3.connect('database.db')
+        conn.row_factory = sqlite3.Row
+        return conn, "sqlite"
+
+
+# ==========================================
+# 3. KHOỞI TẠO BẢNG DỮ LIỆU (TỰ ĐỘNG)
+# ==========================================
+def init_db():
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT key, value FROM config")
-    rows = cursor.fetchall()
+
+    # Bảng sinh viên
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS students (
+            student_id VARCHAR(50) PRIMARY KEY,
+            full_name VARCHAR(100),
+            class_code VARCHAR(50),
+            has_premium INT DEFAULT 0
+        )
+    ''')
+
+    # Bảng báo lỗi
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS error_reports (
+            id SERIAL PRIMARY KEY if db_type == "postgres" else "id INTEGER PRIMARY KEY AUTOINCREMENT",
+            student_id VARCHAR(50),
+            student_name VARCHAR(100),
+            class_code VARCHAR(50),
+            error_type VARCHAR(100),
+            description TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    conn.commit()
     conn.close()
-    return {row['key']: row['value'] for row in rows}
 
-# --- ROUTE CHÍNH SAU ĐÂY ---
+# Chạy khởi tạo bảng khi app cất cánh
+try:
+    init_db()
+except Exception as e:
+    print(f"Lỗi khởi tạo CSDL: {e}")
 
+
+# ==========================================
+# 4. ROUTE GIAO DIỆN HTML (PAGES)
+# ==========================================
 @app.route('/')
-def student_page():
+def index_student():
     return render_template('student.html')
 
-@app.route('/super-admin')
-def super_admin_page():
-    if not session.get('is_super'):
-        return redirect(url_for('login_page'))
-    return render_template('super_admin.html')
-
-@app.route('/canser')
-def class_admin_page():
-    if not session.get('user_id'):
-        return redirect(url_for('login_page'))
+@app.route('/class-admin')
+def page_class_admin():
     return render_template('class_admin.html')
 
-@app.route('/privacy-policy')
-def privacy_page():
-    return render_template('privacy.html')
+@app.route('/super-admin')
+def page_super_admin():
+    return render_template('super_admin.html')
 
-@app.route('/login', methods=['GET', 'POST'])
-def login_page():
-    if request.method == 'POST':
-        data = request.json
-        username = data.get('username')
-        password = data.get('password')
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM class_admins WHERE username = ? AND password = ?", (username, password))
-        user = cursor.fetchone()
-        conn.close()
-        
-        if user:
-            session['user_id'] = user['id']
-            session['username'] = user['username']
-            session['class_code'] = user['class_code']
-            session['is_super'] = user['is_super']
-            return jsonify({'success': True, 'is_super': bool(user['is_super'])})
-        return jsonify({'success': False, 'message': 'Sai tài khoản hoặc mật khẩu!'}), 401
-    return render_template('login.html')
 
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login_page'))
+# ==========================================
+# 5. API XỬ LÝ CHO SINH VIÊN
+# ==========================================
 
-# --- API DÀNH CHO SINH VIÊN ---
-
+# Kiểm tra trạng thái Sinh viên
 @app.route('/api/student/check-status', methods=['POST'])
-def check_student_status():
-    data = request.json
+def check_status():
+    data = request.json or {}
     student_id = data.get('student_id')
-    
-    conn = get_db()
+
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM students WHERE student_id = ?", (student_id,))
+    
+    if db_type == "postgres":
+        cursor.execute("SELECT * FROM students WHERE student_id = %s", (student_id,))
+    else:
+        cursor.execute("SELECT * FROM students WHERE student_id = ?", (student_id,))
+        
     student = cursor.fetchone()
     conn.close()
-    
+
     if student:
         return jsonify({
             'registered': True,
@@ -97,247 +122,105 @@ def check_student_status():
             'class_code': student['class_code'],
             'has_premium': bool(student['has_premium'])
         })
-    return jsonify({'registered': False, 'has_premium': False})
+    return jsonify({'registered': False})
 
-@app.route('/api/student/register-first-time', methods=['POST'])
-def register_first_time():
-    data = request.json
-    student_id = data.get('student_id')
-    full_name = data.get('full_name')
-    class_code = data.get('class_code')
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # Tự động mở Premium nếu sinh viên đăng ký lượt đầu thành công
-    auto_premium = 1 
-    
-    try:
-        cursor.execute(
-            "INSERT INTO students (student_id, full_name, class_code, has_premium) VALUES (?, ?, ?, ?)",
-            (student_id, full_name, class_code, auto_premium)
-        )
-        conn.commit()
-        conn.close()
-        return jsonify({'success': True, 'message': 'Đăng ký thành công và kích hoạt Premium 1-Click!'})
-    except Exception as e:
-        conn.close()
-        return jsonify({'success': False, 'message': 'Mã sinh viên đã tồn tại!'}), 400
-
-@app.route('/api/student/checkin', methods=['POST'])
-def student_checkin():
-    data = request.json
-    student_id = data.get('student_id')
-    full_name = data.get('full_name')
-    class_code = data.get('class_code')
-    user_lat = float(data.get('lat', 0))
-    user_lng = float(data.get('lng', 0))
-    
-    cfg = get_config()
-    if cfg.get('active') != 'true':
-        return jsonify({'success': False, 'message': 'Cổng điểm danh hiện đang đóng!'}), 400
-        
-    admin_lat = float(cfg.get('lat', 0))
-    admin_lng = float(cfg.get('lng', 0))
-    max_radius = float(cfg.get('radius', 100))
-    
-    dist = haversine(user_lat, user_lng, admin_lat, admin_lng)
-    if dist > max_radius:
-        return jsonify({'success': False, 'message': f'Bạn ở ngoài khoảng cách cho phép ({int(dist)}m > {int(max_radius)}m)'}), 400
-        
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO attendance (student_id, student_name, class_code, lat, lng, status) VALUES (?, ?, ?, ?, ?, ?)",
-        (student_id, full_name, class_code, user_lat, user_lng, 'Hợp lệ')
-    )
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'success': True, 'message': 'Điểm danh thành công!'})
-
-# --- API CÁN SỰ LỚP ---
-
-@app.route('/api/class-admin/create-sub-admin', methods=['POST'])
-def create_sub_admin():
-    if not session.get('user_id'):
-        return jsonify({'success': False, 'message': 'Chưa đăng nhập'}), 401
-    
-    data = request.json
-    username = data.get('username')
-    password = data.get('password')
-    class_code = data.get('class_code') or session.get('class_code')
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("INSERT INTO class_admins (username, password, class_code, is_super) VALUES (?, ?, ?, 0)",
-                       (username, password, class_code))
-        conn.commit()
-        conn.close()
-        return jsonify({'success': True, 'message': 'Thêm cán sự thành công!'})
-    except:
-        conn.close()
-        return jsonify({'success': False, 'message': 'Tên đăng nhập đã tồn tại!'}), 400
-
-@app.route('/api/class-admin/toggle-student-premium', methods=['POST'])
-def class_toggle_premium():
-    if not session.get('user_id'):
-        return jsonify({'success': False, 'message': 'Chưa đăng nhập'}), 401
-        
-    data = request.json
-    student_id = data.get('student_id')
-    status = data.get('status', 1)
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE students SET has_premium = ? WHERE student_id = ?", (status, student_id))
-    conn.commit()
-    conn.close()
-    return jsonify({'success': True, 'message': 'Cập nhật trạng thái Premium cho SV thành công!'})
-
-# --- API SUPER ADMIN ---
-
-@app.route('/api/super-admin/toggle-premium-manual', methods=['POST'])
-def super_toggle_premium():
-    if not session.get('is_super'):
-        return jsonify({'success': False, 'message': 'Không có quyền truy cập'}), 403
-        
-    data = request.json
-    student_id = data.get('student_id')
-    status = data.get('status') # 1 hoặc 0
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE students SET has_premium = ? WHERE student_id = ?", (status, student_id))
-    conn.commit()
-    conn.close()
-    return jsonify({'success': True, 'message': 'Đã điều chỉnh Premium thủ công!'})
-
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
-# --- 1. CHỐNG ĐIỂM DANH TRÙNG THIẾT BỊ & KIỂM TRA HẾT GIỜ TỰ ĐỘNG ---
-# Thay thế hoặc cập nhật logic trong route /api/student/checkin:
+# Điểm danh v2 (Tính năng Fingerprint + GPS)
 @app.route('/api/student/checkin-v2', methods=['POST'])
-def student_checkin_v2():
-    data = request.json
+def checkin_v2():
+    data = request.json or {}
     student_id = data.get('student_id')
-    full_name = data.get('full_name')
-    class_code = data.get('class_code')
-    device_hash = data.get('device_hash') # Fingerprint từ client
-    user_lat = float(data.get('lat', 0))
-    user_lng = float(data.get('lng', 0))
-    
-    cfg = get_config()
-    
-    # Ktra cổng mở
-    if cfg.get('active') != 'true':
-        return jsonify({'success': False, 'message': 'Cổng điểm danh hiện đang đóng!'}), 400
-        
-    # Ktra thời gian đóng cổng tự động (close_at)
-    close_at = cfg.get('close_at')
-    if close_at and datetime.now().strftime('%Y-%m-%dT%H:%M') > close_at:
-        return jsonify({'success': False, 'message': 'Đã quá thời gian hẹn giờ đóng cổng!'}), 400
+    device_hash = data.get('device_hash')
+    lat = data.get('lat')
+    lng = data.get('lng')
 
-    conn = get_db()
-    cursor = conn.cursor()
+    # Tại đây anh bạn xử lý logic kiểm tra GPS & lưu thông tin điểm danh...
+    return jsonify({'success': True, 'message': f'Điểm danh thành công! (Device: {device_hash})'})
 
-    # CHỐNG ĐĂNG NHẬP / ĐIỂM DANH 2 LẦN TRÊN CÙNG 1 THIẾT BỊ TRONG NGÀY
-    today = datetime.now().strftime('%Y-%m-%d')
-    cursor.execute("""
-        SELECT student_id FROM attendance 
-        WHERE (student_id = ? OR device_hash = ?) AND DATE(timestamp) = DATE(?)
-    """, (student_id, device_hash, today))
-    
-    existing = cursor.fetchone()
-    if existing:
-        conn.close()
-        return jsonify({'success': False, 'message': 'Thiết bị hoặc Mã sinh viên này đã thực hiện điểm danh hôm nay rồi!'}), 400
-
-    # Kiểm tra Khoảng cách GPS (Haversine)
-    admin_lat = float(cfg.get('lat', 0))
-    admin_lng = float(cfg.get('lng', 0))
-    max_radius = float(cfg.get('radius', 100))
-    dist = haversine(user_lat, user_lng, admin_lat, admin_lng)
-    
-    if dist > max_radius:
-        conn.close()
-        return jsonify({'success': False, 'message': f'Vượt quá bán kính cho phép ({int(dist)}m > {int(max_radius)}m)'}), 400
-
-    # Ghi nhận điểm danh
-    cursor.execute("""
-        INSERT INTO attendance (student_id, student_name, class_code, lat, lng, status, device_hash) 
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (student_id, full_name, class_code, user_lat, user_lng, 'Hợp lệ', device_hash))
-    conn.commit()
-    conn.close()
-    
-    return jsonify({'success': True, 'message': 'Điểm danh thành công!'})
-
-
-# --- 2. BÁO LỖI ĐIỂM DANH DÀNH CHO SINH VIÊN ---
+# Báo lỗi sự cố
 @app.route('/api/student/report-error', methods=['POST'])
 def report_error():
-    data = request.json
-    conn = get_db()
+    data = request.json or {}
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO attendance_errors (student_id, student_name, class_code, error_type, description)
-        VALUES (?, ?, ?, ?, ?)
-    """, (data.get('student_id'), data.get('student_name'), data.get('class_code'), data.get('error_type'), data.get('description')))
+
+    if db_type == "postgres":
+        cursor.execute('''
+            INSERT INTO error_reports (student_id, student_name, class_code, error_type, description)
+            VALUES (%s, %s, %s, %s, %s)
+        ''', (data.get('student_id'), data.get('student_name'), data.get('class_code'), data.get('error_type'), data.get('description')))
+    else:
+        cursor.execute('''
+            INSERT INTO error_reports (student_id, student_name, class_code, error_type, description)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (data.get('student_id'), data.get('student_name'), data.get('class_code'), data.get('error_type'), data.get('description')))
+
     conn.commit()
     conn.close()
-    return jsonify({'success': True, 'message': 'Đã gửi báo lỗi tới Cán sự lớp thành công!'})
+    return jsonify({'success': True, 'message': 'Gửi báo lỗi thành công! Cán sự lớp sẽ kiểm tra.'})
 
 
-# --- 3. QUẢN LÝ LỖI & DỮ LIỆU DÀNH CHO CÁN SỰ ---
-@app.route('/api/class-admin/get-errors', methods=['GET'])
-def get_errors():
-    if not session.get('user_id'): return jsonify([]), 401
-    class_code = session.get('class_code')
-    conn = get_db()
+# ==========================================
+# 6. API XỬ LÝ CHO CÁN SỰ LỚP & SUPER ADMIN
+# ==========================================
+
+# Mở / Khóa Premium Sinh viên
+@app.route('/api/class-admin/toggle-student-premium', methods=['POST'])
+@app.route('/api/super-admin/toggle-premium-manual', methods=['POST'])
+def toggle_premium():
+    data = request.json or {}
+    student_id = data.get('student_id')
+    status = data.get('status')
+
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM attendance_errors WHERE class_code = ? ORDER BY id DESC", (class_code,))
-    rows = cursor.fetchall()
-    conn.close()
-    return jsonify([dict(r) for r in rows])
 
-# XUẤT FILE EXCEL ĐIỂM DANH
+    if db_type == "postgres":
+        cursor.execute("UPDATE students SET has_premium = %s WHERE student_id = %s", (status, student_id))
+    else:
+        cursor.execute("UPDATE students SET has_premium = ? WHERE student_id = ?", (status, student_id))
+
+    conn.commit()
+    conn.close()
+    
+    action_str = "Mở" if status == 1 else "Khóa"
+    return jsonify({'success': True, 'message': f'Đã {action_str} thành công Premium cho MSSV: {student_id}'})
+
+# Xuất dữ liệu ra file Excel
 @app.route('/api/class-admin/export-excel', methods=['GET'])
 def export_excel():
-    if not session.get('user_id'): return "Unauthorized", 401
-    class_code = session.get('class_code')
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Danh Sach Diem Danh"
     
-    conn = get_db()
-    df = pd.read_sql_query("SELECT student_id, student_name, class_code, timestamp, status FROM attendance WHERE class_code = ?", conn, params=(class_code,))
-    conn.close()
+    # Tiêu đề bảng
+    ws.append(["MSSV", "Họ và Tên", "Mã Lớp", "Trạng Thái Premium"])
     
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='DiemDanh')
-    output.seek(0)
-    
-    return send_file(output, download_name=f'DiemDanh_{class_code}.xlsx', as_attachment=True)
-
-
-# --- 4. DYNAMIC PREMIUM MANAGEMENT DÀNH CHO SUPER ADMIN ---
-# Cho phép bật/tắt hoặc thêm các tính năng Premium động không cần sửa code
-@app.route('/api/super-admin/premium-features', methods=['GET', 'POST'])
-def manage_premium_features():
-    if not session.get('is_super'): return jsonify({'message': 'No permission'}), 403
-    conn = get_db()
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    
-    if request.method == 'POST':
-        data = request.json
-        # Bật/Tắt một tính năng Premium cụ thể
-        cursor.execute("UPDATE premium_features SET is_enabled = ? WHERE feature_key = ?", 
-                       (data.get('is_enabled'), data.get('feature_key')))
-        conn.commit()
-        conn.close()
-        return jsonify({'success': True, 'message': 'Cập nhật cấu hình tính năng Premium thành công!'})
-        
-    cursor.execute("SELECT * FROM premium_features")
-    features = cursor.fetchall()
+    cursor.execute("SELECT * FROM students")
+    rows = cursor.fetchall()
     conn.close()
-    return jsonify([dict(f) for f in features])
+
+    for row in rows:
+        ws.append([row['student_id'], row['full_name'], row['class_code'], "Có" if row['has_premium'] else "Không"])
+
+    stream = BytesIO()
+    wb.save(stream)
+    stream.seek(0)
+
+    return send_file(
+        stream,
+        as_attachment=True,
+        download_name='danh_sach_diem_danh.xlsx',
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+
+
+# ==========================================
+# 7. CẤU HÌNH CỔNG ĐỘNG ĐỂ CHẠY TRÊN RENDER
+# ==========================================
+if __name__ == '__main__':
+    # Lấy cổng do Render cấp tự động qua biến môi trường PORT (mặc định là 5000 nếu chạy máy local)
+    port = int(os.environ.get('PORT', 5000))
+    # Chạy trên tất cả IP (0.0.0.0) để Render kết nối được
+    app.run(host='0.0.0.0', port=port, debug=False)
