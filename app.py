@@ -2,6 +2,9 @@ from flask import Flask, render_template, request, jsonify, session, redirect, u
 from database import get_db, init_db
 import math
 from datetime import datetime
+import pandas as pd # Thêm import này ở đầu app.py để xuất Excel
+from flask import send_file
+import io
 
 app = Flask(__name__)
 app.secret_key = "secret_key_point_danh_system"
