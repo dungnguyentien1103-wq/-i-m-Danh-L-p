@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Điểm Danh Lớp Học</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; background-color: #f8f9fa; }
+        .card { max-width: 420px; margin: auto; padding: 20px; background: white; border-radius: 10px; border: 1px solid #ddd; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .status { font-weight: bold; padding: 6px 12px; border-radius: 4px; display: inline-block; }
+        .open { background: #d4edda; color: #155724; }
+        .closed { background: #f8d7da; color: #721c24; }
+        input, button, textarea { width: 100%; padding: 10px; margin-top: 10px; box-sizing: border-box; border-radius: 5px; border: 1px solid #ccc; }
+        button { background: #007bff; color: white; border: none; font-weight: bold; cursor: pointer; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .err-box { background: #fff3cd; color: #856404; padding: 10px; border-radius: 5px; margin-top: 15px; font-size: 14px; display: none; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2 style="text-align: center;">Cổng Điểm Danh</h2>
+        <p style="text-align: center;">Trạng thái: <span id="status-text" class="status closed">Đang kiểm tra...</span></p>
+        
+        <form id="attendance-form">
+            <label>Mã Sinh Viên (MSSV):</label>
+            <input type="text" id="mssv" placeholder="Nhập MSSV..." required disabled>
+            
+            <label>Họ và Tên:</label>
+            <input type="text" id="ho_ten" placeholder="Nhập Họ Tên..." required disabled>
+            
+            <button type="submit" id="submit-btn" disabled>GỬI ĐIỂM DANH</button>
+        </form>
+        
+        <p id="msg" style="font-weight: bold; margin-top: 15px; text-align: center;"></p>
+
+        <!-- KHU VỰC BÁO LỖI THIẾT BỊ -->
+        <div id="err-report-section" class="err-box">
+            <p><b>Gặp sự cố thiết bị/không điểm danh được?</b></p>
+            <textarea id="err-reason" rows="2" placeholder="Mô tả lỗi (Ví dụ: Đổi máy, lỗi vị trí...)"></textarea>
+            <button style="background: #ffc107; color: black;" onclick="sendErrorReport()">Gửi Báo Lỗi Cho Cán Sự</button>
+        </div>
+    </div>
+
+    <script>
+        let currentMode = 'all';
+
+        // Tạo hoặc lấy Device ID cố định cho trình duyệt này
+        function getDeviceId() {
+            let deviceId = localStorage.getItem('app_device_id');
+            if (!deviceId) {
+                deviceId = 'DEV-' + Math.random().toString(36).substring(2, 11) + '-' + Date.now();
+                localStorage.setItem('app_device_id', deviceId);
+            }
+            return deviceId;
+        }
+
+        async function checkStatus() {
+            try {
+                const res = await fetch('/api/check-status');
+                const data = await res.json();
+                const statusText = document.getElementById('status-text');
+                const inputs = document.querySelectorAll('#attendance-form input, #attendance-form button');
+                currentMode = data.network_mode;
+
+                if (data.is_open) {
+                    statusText.innerText = 'Đang MỞ';
+                    statusText.className = 'status open';
+                    inputs.forEach(i => i.disabled = false);
+                } else {
+                    statusText.innerText = 'Đang ĐÓNG';
+                    statusText.className = 'status closed';
+                    inputs.forEach(i => i.disabled = true);
+                }
+            } catch (e) {}
+        }
+
+        document.getElementById('attendance-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const msgEl = document.getElementById('msg');
+            msgEl.style.color = 'blue';
+            msgEl.innerText = "Đang xử lý điểm danh...";
+
+            let lat = null, lng = null;
+
+            if (currentMode === 'gps_location') {
+                if ("geolocation" in navigator) {
+                    try {
+                        const position = await new Promise((resolve, reject) => {
+                            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000 });
+                        });
+                        lat = position.coords.latitude;
+                        lng = position.coords.longitude;
+                    } catch (err) {
+                        msgEl.style.color = 'red';
+                        msgEl.innerText = "Lỗi: Bạn cần BẬT vị trí (GPS) trên thiết bị để điểm danh!";
+                        document.getElementById('err-report-section').style.display = 'block';
+                        return;
+                    }
+                } else {
+                    msgEl.style.color = 'red';
+                    msgEl.innerText = "Trình duyệt của bạn không hỗ trợ định vị GPS!";
+                    return;
+                }
+            }
+
+            const res = await fetch('/api/diem-danh', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mssv: document.getElementById('mssv').value,
+                    ho_ten: document.getElementById('ho_ten').value,
+                    device_id: getDeviceId(),
+                    lat: lat,
+                    lng: lng
+                })
+            });
+
+            const result = await res.json();
+            if (res.ok) {
+                msgEl.style.color = 'green';
+                msgEl.innerText = result.message;
+                document.getElementById('mssv').value = '';
+                document.getElementById('ho_ten').value = '';
+                document.getElementById('err-report-section').style.display = 'none';
+            } else {
+                msgEl.style.color = 'red';
+                msgEl.innerText = result.message;
+                // Hiển thị nút báo lỗi cho cán sự nếu bị từ chối
+                document.getElementById('err-report-section').style.display = 'block';
+            }
+        });
+
+        async function sendErrorReport() {
+            const mssv = document.getElementById('mssv').value;
+            const ho_ten = document.getElementById('ho_ten').value;
+            const ly_do = document.getElementById('err-reason').value;
+            const msgEl = document.getElementById('msg');
+
+            if (!mssv || !ho_ten) {
+                alert('Vui lòng điền MSSV và Họ Tên trước khi gửi báo lỗi!');
+                return;
+            }
+
+            const res = await fetch('/api/bao-loi', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mssv: mssv,
+                    ho_ten: ho_ten,
+                    ly_do: ly_do || 'Sự cố bị khóa thiết bị / Không thể điểm danh',
+                    device_id: getDeviceId()
+                })
+            });
+            const data = await res.json();
+            msgEl.style.color = 'orange';
+            msgEl.innerText = data.message;
+            document.getElementById('err-report-section').style.display = 'none';
+        }
+
+        checkStatus();
+        setInterval(checkStatus, 5000);
+    </script>
+</body>
+</html>
