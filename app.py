@@ -561,28 +561,22 @@ def export_excel():
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
 # Bổ sung vào hàm init_db() đoạn tạo bảng cấu hình tính năng kinh doanh (nếu chưa có)
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS system_features (
-        feature_key TEXT PRIMARY KEY,
-        feature_name TEXT,
-        is_free_tier INTEGER DEFAULT 1
-    );
-''')
 @app.route('/api/class-admin/register', methods=['POST'])
 def register_class_admin():
     data = request.json or {}
     username = data.get('username', '').strip()
     password = data.get('password', '').strip()
-    class_code = data.get('class_code', '').strip().upper() # Mã lớp viết hoa để phân biệt
+    class_code = data.get('class_code', '').strip().upper()
 
     if not username or not password or not class_code:
-        return jsonify({'success': False, 'message': 'Vui lòng nhập đầy đủ Tài khoản, Mật khẩu và Mã lớp!'})
+        return jsonify({'success': False, 'message': 'Vui lòng nhập đầy đủ thông tin!'})
 
+    # --- BẮT BUỘC PHẢI CÓ 2 DÒNG NÀY TRƯỚC KHI DÙNG cursor ---
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
+    # --------------------------------------------------------
 
     try:
-        # Kiểm tra xem mã lớp đã tồn tại chưa để tránh trùng lặp giữa các lớp
         if db_type == "postgres":
             cursor.execute("SELECT * FROM class_admins WHERE class_code = %s", (class_code,))
         else:
@@ -590,9 +584,8 @@ def register_class_admin():
         
         if cursor.fetchone():
             conn.close()
-            return jsonify({'success': False, 'message': f'Mã lớp "{class_code}" đã tồn tại! Vui lòng chọn mã lớp khác.'})
+            return jsonify({'success': False, 'message': f'Mã lớp "{class_code}" đã tồn tại!'})
 
-        # Thêm tài khoản quản lý lớp mới
         if db_type == "postgres":
             cursor.execute('''
                 INSERT INTO class_admins (username, password, class_code, is_super)
@@ -609,7 +602,7 @@ def register_class_admin():
         return jsonify({'success': True, 'message': f'Tạo lớp thành công với mã: {class_code}!'})
     except Exception as e:
         conn.close()
-        return jsonify({'success': False, 'message': f'Lỗi: Tên tài khoản quản lý này đã được sử dụng.'})
+        return jsonify({'success': False, 'message': f'Lỗi: {str(e)}'})
 @app.route('/api/student/remember-session', methods=['POST'])
 def remember_student_session():
     data = request.json or {}
