@@ -12,10 +12,7 @@ app = Flask(__name__)
 # ==========================================
 # 1. CẤU HÌNH BẢO MẬT & BIẾN MÔI TRƯỜNG (CLOUD / RENDER)
 # ==========================================
-# SECRET_KEY lấy từ Environment Variable trên Render, mặc định dev nếu chạy local
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-super-safe-123')
-
-# DATABASE_URL lấy từ PostgreSQL trên Render / Supabase
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 # Cấu hình GPS mặc định hệ thống (Tọa độ trường/lớp & bán kính cho phép tính bằng mét)
@@ -29,10 +26,6 @@ DEFAULT_CONFIG = {
 # 2. KẾT NỐI CƠ SỞ DỮ LIỆU ĐA NĂNG (POSTGRESQL & SQLITE)
 # ==========================================
 def get_db_connection():
-    """
-    Tự động kết nối PostgreSQL nếu chạy trên Render (có DATABASE_URL),
-    hoặc dùng SQLite local nếu chạy ở máy cá nhân.
-    """
     if DATABASE_URL:
         db_url = DATABASE_URL.replace("postgres://", "postgresql://")
         conn = psycopg2.connect(db_url, cursor_factory=RealDictCursor)
@@ -43,13 +36,12 @@ def get_db_connection():
         return conn, "sqlite"
 
 # ==========================================
-# 3. KHỞI TẠO CƠ SỞ DỮ LIỆU TỰ ĐỘNG
+# 3. KHỞI TẠO CƠ SỞ DỮ LIỆU TỰ ĐỘNG (ĐÃ GỘP TOÀN BỘ BẢNG NĂNG CAO)
 # ==========================================
 def init_db():
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
 
-    # Bảng danh sách Sinh viên
     if db_type == "postgres":
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS students (
@@ -64,7 +56,8 @@ def init_db():
             CREATE TABLE IF NOT EXISTS class_admins (
                 username VARCHAR(50) PRIMARY KEY,
                 password VARCHAR(100),
-                class_code VARCHAR(50)
+                class_code VARCHAR(50),
+                is_super INT DEFAULT 0
             );
         ''')
         cursor.execute('''
@@ -90,6 +83,49 @@ def init_db():
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS attendance_errors (
+                id SERIAL PRIMARY KEY,
+                student_id VARCHAR(50),
+                student_name VARCHAR(100),
+                class_code VARCHAR(50),
+                error_type VARCHAR(100),
+                description TEXT,
+                status VARCHAR(50) DEFAULT 'PENDING',
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS admin_logs (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50),
+                action TEXT,
+                class_code VARCHAR(50),
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS auto_schedules (
+                id SERIAL PRIMARY KEY,
+                class_code VARCHAR(50),
+                day_of_week INT,
+                start_time VARCHAR(10),
+                end_time VARCHAR(10),
+                is_active INT DEFAULT 1
+            );
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS premium_features (
+                feature_key VARCHAR(100) PRIMARY KEY,
+                feature_name VARCHAR(255),
+                is_enabled INT DEFAULT 1
+            );
+        ''')
+        # Tạo Super Admin mặc định nếu chưa có
+        cursor.execute("SELECT * FROM class_admins WHERE username = %s", ('admin',))
+        if not cursor.fetchone():
+            cursor.execute("INSERT INTO class_admins (username, password, class_code, is_super) VALUES (%s, %s, %s, %s)",
+                           ('admin', 'admin123', 'ALL', 1))
     else:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS students (
@@ -104,7 +140,8 @@ def init_db():
             CREATE TABLE IF NOT EXISTS class_admins (
                 username TEXT PRIMARY KEY,
                 password TEXT,
-                class_code TEXT
+                class_code TEXT,
+                is_super INTEGER DEFAULT 0
             );
         ''')
         cursor.execute('''
@@ -130,6 +167,61 @@ def init_db():
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             );
         ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS attendance_errors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                student_id TEXT,
+                student_name TEXT,
+                class_code TEXT,
+                error_type TEXT,
+                description TEXT,
+                status TEXT DEFAULT 'PENDING',
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS admin_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT,
+                action TEXT,
+                class_code TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS auto_schedules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                class_code TEXT,
+                day_of_week INTEGER,
+                start_time TEXT,
+                end_time TEXT,
+                is_active INTEGER DEFAULT 1
+            );
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS premium_features (
+                feature_key TEXT PRIMARY KEY,
+                feature_name TEXT,
+                is_enabled INTEGER DEFAULT 1
+            );
+        ''')
+        # Tạo Super Admin mặc định nếu chưa có
+        cursor.execute("SELECT * FROM class_admins WHERE username = ?", ('admin',))
+        if not cursor.fetchone():
+            cursor.execute("INSERT INTO class_admins (username, password, class_code, is_super) VALUES (?, ?, ?, ?)",
+                           ('admin', 'admin123', 'ALL', 1))
+
+    # Chèn các tính năng Premium mặc định
+    default_features = [
+        ('one_click_checkin', 'Điểm danh 1-Touch không cần nhập lại tên/lớp', 1),
+        ('auto_fill_location', 'Tự động lấy vị trí định vị cao cấp', 1),
+        ('priority_error_report', 'Gửi báo lỗi ưu tiên cho Cán sự', 1)
+    ]
+    for feat in default_features:
+        if db_type == "postgres":
+            cursor.execute("INSERT INTO premium_features (feature_key, feature_name, is_enabled) VALUES (%s, %s, %s) ON CONFLICT (feature_key) DO NOTHING", feat)
+        else:
+            cursor.execute("INSERT OR IGNORE INTO premium_features (feature_key, feature_name, is_enabled) VALUES (?, ?, ?)", feat)
 
     conn.commit()
     conn.close()
@@ -166,43 +258,22 @@ def page_class_admin():
 def page_super_admin():
     return render_template('super_admin.html')
 
+@app.route('/login-page')
+def page_login():
+    return render_template('login.html')
+
+@app.route('/privacy-policy')
+def privacy_policy():
+    return render_template('privacy.html')
+
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect(url_for('index_student'))
-# Xử lý đăng nhập Quản trị viên / Cán sự lớp
-@app.route('/login', methods=['POST'])
-def login():
-    data = request.json or {}
-    username = data.get('username', '').strip()
-    password = data.get('password', '').strip()
 
-    if not username or not password:
-        return jsonify({'success': False, 'message': 'Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu!'})
-
-    conn, db_type = get_db_connection()
-    cursor = conn.cursor()
-
-    if db_type == "postgres":
-        cursor.execute("SELECT * FROM class_admins WHERE username = %s AND password = %s", (username, password))
-    else:
-        cursor.execute("SELECT * FROM class_admins WHERE username = ? AND password = ?", (username, password))
-    
-    admin = cursor.fetchone()
-    conn.close()
-
-    if admin:
-        session['username'] = admin['username']
-        # Kiểm tra nếu tài khoản là admin gốc hoặc có cờ phân quyền super
-        is_super = 1 if admin['username'] == 'admin' or (hasattr(admin, 'keys') and 'is_super' in admin and admin['is_super'] == 1) else 0
-        return jsonify({'success': True, 'is_super': is_super})
-    else:
-        return jsonify({'success': False, 'message': 'Sai tên đăng nhập hoặc mật khẩu!'})
 # ==========================================
 # 5. API DÀNH CHO SINH VIÊN
 # ==========================================
-
-# Kiểm tra trạng thái đăng ký / Premium của sinh viên
 @app.route('/api/student/check-status', methods=['POST'])
 def check_status():
     data = request.json or {}
@@ -231,7 +302,6 @@ def check_status():
         })
     return jsonify({'registered': False})
 
-# Đăng ký thông tin sinh viên lần đầu
 @app.route('/api/student/register-first-time', methods=['POST'])
 def register_first_time():
     data = request.json or {}
@@ -265,7 +335,6 @@ def register_first_time():
         conn.close()
         return jsonify({'success': False, 'message': f'Lỗi đăng ký: {str(e)}'})
 
-# Điểm danh v2 (Tích hợp Device Fingerprint + Kiểm tra khoảng cách GPS)
 @app.route('/api/student/checkin-v2', methods=['POST'])
 def checkin_v2():
     data = request.json or {}
@@ -279,7 +348,6 @@ def checkin_v2():
     if not student_id or user_lat is None or user_lng is None:
         return jsonify({'success': False, 'message': 'Thiếu dữ liệu điểm danh hoặc vị trí GPS!'})
 
-    # Kiểm tra bán kính khoảng cách GPS
     dist = calculate_distance(user_lat, user_lng, DEFAULT_CONFIG['lat'], DEFAULT_CONFIG['lng'])
     if dist > DEFAULT_CONFIG['radius']:
         return jsonify({
@@ -290,7 +358,6 @@ def checkin_v2():
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
 
-    # Lấy thông tin thiết bị đã đăng ký của sinh viên để chống điểm danh hộ
     if db_type == "postgres":
         cursor.execute("SELECT device_hash FROM students WHERE student_id = %s", (student_id,))
     else:
@@ -303,13 +370,11 @@ def checkin_v2():
             conn.close()
             return jsonify({'success': False, 'message': 'Cảnh báo: Phát hiện thiết bị lạ! Không thể điểm danh hộ.'})
     else:
-        # Cập nhật thiết bị lần đầu
         if db_type == "postgres":
             cursor.execute("UPDATE students SET device_hash = %s WHERE student_id = %s", (device_hash, student_id))
         else:
             cursor.execute("UPDATE students SET device_hash = ? WHERE student_id = ?", (device_hash, student_id))
 
-    # Ghi nhật ký điểm danh
     if db_type == "postgres":
         cursor.execute('''
             INSERT INTO checkin_logs (student_id, full_name, class_code, device_hash, lat, lng)
@@ -325,7 +390,6 @@ def checkin_v2():
     conn.close()
     return jsonify({'success': True, 'message': f'Điểm danh thành công cho sinh viên {student_id}!'})
 
-# Gửi Báo lỗi sự cố
 @app.route('/api/student/report-error', methods=['POST'])
 def report_error():
     data = request.json or {}
@@ -350,8 +414,6 @@ def report_error():
 # ==========================================
 # 6. API DÀNH CHO CÁN SỰ LỚP & SUPER ADMIN
 # ==========================================
-
-# Khóa / Mở Premium cho Sinh viên
 @app.route('/api/class-admin/toggle-student-premium', methods=['POST'])
 @app.route('/api/super-admin/toggle-premium-manual', methods=['POST'])
 def toggle_premium():
@@ -376,7 +438,6 @@ def toggle_premium():
     act = "Mở" if status == 1 else "Khóa"
     return jsonify({'success': True, 'message': f'Đã {act} thành công Premium cho MSSV: {student_id}'})
 
-# Tạo cán sự phụ (Tài khoản Cán sự lớp)
 @app.route('/api/class-admin/create-sub-admin', methods=['POST'])
 @app.route('/api/super-admin/create-class-admin', methods=['POST'])
 def create_class_admin():
@@ -394,13 +455,13 @@ def create_class_admin():
     try:
         if db_type == "postgres":
             cursor.execute('''
-                INSERT INTO class_admins (username, password, class_code)
-                VALUES (%s, %s, %s)
+                INSERT INTO class_admins (username, password, class_code, is_super)
+                VALUES (%s, %s, %s, 0)
             ''', (username, password, class_code))
         else:
             cursor.execute('''
-                INSERT INTO class_admins (username, password, class_code)
-                VALUES (?, ?, ?)
+                INSERT INTO class_admins (username, password, class_code, is_super)
+                VALUES (?, ?, ?, 0)
             ''', (username, password, class_code))
 
         conn.commit()
@@ -410,7 +471,6 @@ def create_class_admin():
         conn.close()
         return jsonify({'success': False, 'message': 'Tên đăng nhập cán sự đã tồn tại!'})
 
-# Xóa tài khoản Cán sự lớp (Super Admin)
 @app.route('/api/super-admin/delete-class-admin', methods=['POST'])
 def delete_class_admin():
     data = request.json or {}
@@ -428,7 +488,6 @@ def delete_class_admin():
     conn.close()
     return jsonify({'success': True, 'message': f'Đã xóa thành công tài khoản cán sự: {username}'})
 
-# Lấy danh sách báo lỗi từ Sinh viên
 @app.route('/api/class-admin/get-errors', methods=['GET'])
 def get_errors():
     conn, db_type = get_db_connection()
@@ -450,7 +509,6 @@ def get_errors():
         })
     return jsonify(result)
 
-# Xóa toàn bộ báo lỗi (Super Admin)
 @app.route('/api/super-admin/clear-errors', methods=['POST'])
 def clear_errors():
     conn, db_type = get_db_connection()
@@ -460,7 +518,6 @@ def clear_errors():
     conn.close()
     return jsonify({'success': True, 'message': 'Đã dọn dẹp sạch toàn bộ báo lỗi hệ thống!'})
 
-# Cập nhật cấu hình GPS hệ thống (Super Admin)
 @app.route('/api/super-admin/update-config', methods=['POST'])
 def update_config():
     data = request.json or {}
@@ -469,14 +526,12 @@ def update_config():
     DEFAULT_CONFIG['radius'] = data.get('radius', DEFAULT_CONFIG['radius'])
     return jsonify({'success': True, 'message': 'Đã cập nhật tọa độ GPS và bán kính thành công!'})
 
-# Xuất danh sách điểm danh ra file Excel
 @app.route('/api/class-admin/export-excel', methods=['GET'])
 def export_excel():
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Nhat Ky Diem Danh"
 
-    # Tiêu đề cột Excel
     ws.append(["STT", "MSSV", "Họ và Tên", "Mã Lớp", "Thiết Bị (Device Hash)", "Thời Gian Điểm Danh"])
 
     conn, db_type = get_db_connection()
@@ -510,6 +565,5 @@ def export_excel():
 # 7. KHỞI CHẠY SERVER VỚI CỔNG ĐỘNG
 # ==========================================
 if __name__ == '__main__':
-    # Lấy cổng tự động do Render cấp (Env: PORT)
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
