@@ -216,3 +216,128 @@ def super_toggle_premium():
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
+# --- 1. CHỐNG ĐIỂM DANH TRÙNG THIẾT BỊ & KIỂM TRA HẾT GIỜ TỰ ĐỘNG ---
+# Thay thế hoặc cập nhật logic trong route /api/student/checkin:
+@app.route('/api/student/checkin-v2', methods=['POST'])
+def student_checkin_v2():
+    data = request.json
+    student_id = data.get('student_id')
+    full_name = data.get('full_name')
+    class_code = data.get('class_code')
+    device_hash = data.get('device_hash') # Fingerprint từ client
+    user_lat = float(data.get('lat', 0))
+    user_lng = float(data.get('lng', 0))
+    
+    cfg = get_config()
+    
+    # Ktra cổng mở
+    if cfg.get('active') != 'true':
+        return jsonify({'success': False, 'message': 'Cổng điểm danh hiện đang đóng!'}), 400
+        
+    # Ktra thời gian đóng cổng tự động (close_at)
+    close_at = cfg.get('close_at')
+    if close_at and datetime.now().strftime('%Y-%m-%dT%H:%M') > close_at:
+        return jsonify({'success': False, 'message': 'Đã quá thời gian hẹn giờ đóng cổng!'}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # CHỐNG ĐĂNG NHẬP / ĐIỂM DANH 2 LẦN TRÊN CÙNG 1 THIẾT BỊ TRONG NGÀY
+    today = datetime.now().strftime('%Y-%m-%d')
+    cursor.execute("""
+        SELECT student_id FROM attendance 
+        WHERE (student_id = ? OR device_hash = ?) AND DATE(timestamp) = DATE(?)
+    """, (student_id, device_hash, today))
+    
+    existing = cursor.fetchone()
+    if existing:
+        conn.close()
+        return jsonify({'success': False, 'message': 'Thiết bị hoặc Mã sinh viên này đã thực hiện điểm danh hôm nay rồi!'}), 400
+
+    # Kiểm tra Khoảng cách GPS (Haversine)
+    admin_lat = float(cfg.get('lat', 0))
+    admin_lng = float(cfg.get('lng', 0))
+    max_radius = float(cfg.get('radius', 100))
+    dist = haversine(user_lat, user_lng, admin_lat, admin_lng)
+    
+    if dist > max_radius:
+        conn.close()
+        return jsonify({'success': False, 'message': f'Vượt quá bán kính cho phép ({int(dist)}m > {int(max_radius)}m)'}), 400
+
+    # Ghi nhận điểm danh
+    cursor.execute("""
+        INSERT INTO attendance (student_id, student_name, class_code, lat, lng, status, device_hash) 
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (student_id, full_name, class_code, user_lat, user_lng, 'Hợp lệ', device_hash))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'success': True, 'message': 'Điểm danh thành công!'})
+
+
+# --- 2. BÁO LỖI ĐIỂM DANH DÀNH CHO SINH VIÊN ---
+@app.route('/api/student/report-error', methods=['POST'])
+def report_error():
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO attendance_errors (student_id, student_name, class_code, error_type, description)
+        VALUES (?, ?, ?, ?, ?)
+    """, (data.get('student_id'), data.get('student_name'), data.get('class_code'), data.get('error_type'), data.get('description')))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'message': 'Đã gửi báo lỗi tới Cán sự lớp thành công!'})
+
+
+# --- 3. QUẢN LÝ LỖI & DỮ LIỆU DÀNH CHO CÁN SỰ ---
+@app.route('/api/class-admin/get-errors', methods=['GET'])
+def get_errors():
+    if not session.get('user_id'): return jsonify([]), 401
+    class_code = session.get('class_code')
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM attendance_errors WHERE class_code = ? ORDER BY id DESC", (class_code,))
+    rows = cursor.fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+# XUẤT FILE EXCEL ĐIỂM DANH
+@app.route('/api/class-admin/export-excel', methods=['GET'])
+def export_excel():
+    if not session.get('user_id'): return "Unauthorized", 401
+    class_code = session.get('class_code')
+    
+    conn = get_db()
+    df = pd.read_sql_query("SELECT student_id, student_name, class_code, timestamp, status FROM attendance WHERE class_code = ?", conn, params=(class_code,))
+    conn.close()
+    
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='DiemDanh')
+    output.seek(0)
+    
+    return send_file(output, download_name=f'DiemDanh_{class_code}.xlsx', as_attachment=True)
+
+
+# --- 4. DYNAMIC PREMIUM MANAGEMENT DÀNH CHO SUPER ADMIN ---
+# Cho phép bật/tắt hoặc thêm các tính năng Premium động không cần sửa code
+@app.route('/api/super-admin/premium-features', methods=['GET', 'POST'])
+def manage_premium_features():
+    if not session.get('is_super'): return jsonify({'message': 'No permission'}), 403
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    if request.method == 'POST':
+        data = request.json
+        # Bật/Tắt một tính năng Premium cụ thể
+        cursor.execute("UPDATE premium_features SET is_enabled = ? WHERE feature_key = ?", 
+                       (data.get('is_enabled'), data.get('feature_key')))
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True, 'message': 'Cập nhật cấu hình tính năng Premium thành công!'})
+        
+    cursor.execute("SELECT * FROM premium_features")
+    features = cursor.fetchall()
+    conn.close()
+    return jsonify([dict(f) for f in features])
