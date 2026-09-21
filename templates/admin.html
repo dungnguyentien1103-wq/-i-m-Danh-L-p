@@ -183,12 +183,16 @@
                     const pos = marker.getLatLng();
                     updateCoordsUI(pos.lat, pos.lng);
                 });
-            } else {
-                updateMapPosition(lat, lng, radius);
             }
+
+            // Ép Leaflet tính toán lại kích thước khung chứa và di chuyển đến điểm mới
+            setTimeout(() => {
+                map.invalidateSize();
+                updateMapPosition(lat, lng, radius);
+            }, 300);
         }
 
-        // Cập nhật vị trí Marker và Circle trên bản đồ
+        // Cập nhật vị trí Marker và Vòng tròn bán kính trên bản đồ
         function updateMapPosition(lat, lng, radius) {
             if (map && marker && circle) {
                 const newLatLng = new L.LatLng(lat, lng);
@@ -199,14 +203,14 @@
             }
         }
 
-        // Cập nhật giá trị vào các ô input khi bấm trên bản đồ
+        // Cập nhật giá trị vào các ô input khi người dùng click/kéo trên bản đồ
         function updateCoordsUI(newLat, newLng) {
             document.getElementById('class_lat').value = parseFloat(newLat).toFixed(6);
             document.getElementById('class_lng').value = parseFloat(newLng).toFixed(6);
             updateMapPosition(newLat, newLng);
         }
 
-        // Áp dụng tọa độ khi cán sự tự gõ thủ công
+        // Áp dụng tọa độ khi cán sự nhập tay vào ô input
         function applyManualCoords() {
             const lat = parseFloat(document.getElementById('class_lat').value);
             const lng = parseFloat(document.getElementById('class_lng').value);
@@ -219,7 +223,7 @@
             updateMapPosition(lat, lng, radius);
         }
 
-        // Lấy tọa độ vị trí hiện tại của thiết bị cán sự
+        // Lấy tọa độ vị trí thực tế của cán sự qua thiết bị
         function getCurrentGPS() {
             if ("geolocation" in navigator) {
                 navigator.geolocation.getCurrentPosition((position) => {
@@ -232,13 +236,13 @@
             }
         }
 
-        // Thay đổi bán kính nhanh bằng các nút bấm 50m, 100m...
+        // Thay đổi nhanh bán kính qua nút bấm (50m, 100m, 200m, 500m)
         function setQuickRadius(meters) {
             document.getElementById('max_distance_meters').value = meters;
             updateRadiusFromInput();
         }
 
-        // Cập nhật vòng tròn bán kính khi nhập số
+        // Cập nhật vòng tròn bán kính khi thay đổi ô số mét
         function updateRadiusFromInput() {
             const r = parseFloat(document.getElementById('max_distance_meters').value) || 100;
             if (circle) circle.setRadius(r);
@@ -252,10 +256,11 @@
                 const lat = parseFloat(document.getElementById('class_lat').value) || 10.762622;
                 const lng = parseFloat(document.getElementById('class_lng').value) || 106.660172;
                 const radius = parseFloat(document.getElementById('max_distance_meters').value) || 100;
+                
+                // Đợi thẻ div hiển thị xong mới nạp bản đồ
                 setTimeout(() => {
                     initMap(lat, lng, radius);
-                    map.invalidateSize();
-                }, 200);
+                }, 150);
             } else {
                 container.style.display = 'none';
             }
