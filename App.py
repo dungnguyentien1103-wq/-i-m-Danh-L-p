@@ -1,300 +1,220 @@
 from flask import Flask, render_template, request, jsonify, send_file
-from flask_cors import CORS
 import sqlite3
-from datetime import datetime
+import datetime
 import pandas as pd
-import io
-import math
+import os
 
 app = Flask(__name__)
-CORS(app)
+DB_NAME = "database.db"
 
 def init_db():
-    conn = sqlite3.connect('diem_danh.db')
+    conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    # Bảng lưu điểm danh (Thêm cột device_id)
-    c.execute('''CREATE TABLE IF NOT EXISTS diem_danh (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    mssv TEXT,
-                    ho_ten TEXT,
-                    ngay_diem_danh TEXT,
-                    thoi_gian TEXT,
-                    device_id TEXT
-                )''')
-    # Bảng lưu báo cáo lỗi thiết bị
-    c.execute('''CREATE TABLE IF NOT EXISTS bao_loi (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    mssv TEXT,
-                    ho_ten TEXT,
-                    ly_do TEXT,
-                    ngay TEXT,
-                    thoi_gian TEXT,
-                    device_id TEXT,
-                    trang_thai TEXT DEFAULT 'pending'
-                )''')
     # Bảng cấu hình
     c.execute('''CREATE TABLE IF NOT EXISTS config (
                     key TEXT PRIMARY KEY,
                     value TEXT
                 )''')
+    # Bảng điểm danh
+    c.execute('''CREATE TABLE IF NOT EXISTS diem_danh (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    mssv TEXT,
+                    ho_ten TEXT,
+                    email TEXT,
+                    ngay TEXT,
+                    thoi_gian TEXT,
+                    device_id TEXT
+                )''')
+    # Bảng báo lỗi thiết bị
+    c.execute('''CREATE TABLE IF NOT EXISTS bao_loi (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    mssv TEXT,
+                    ho_ten TEXT,
+                    ly_do TEXT,
+                    device_id TEXT,
+                    ngay TEXT,
+                    thoi_gian TEXT
+                )''')
     
-    c.execute("INSERT OR IGNORE INTO config VALUES ('is_open', 'false')")
-    c.execute("INSERT OR IGNORE INTO config VALUES ('close_at', '')")
-    c.execute("INSERT OR IGNORE INTO config VALUES ('selected_date', '')")
-    c.execute("INSERT OR IGNORE INTO config VALUES ('network_mode', 'all')")
-    c.execute("INSERT OR IGNORE INTO config VALUES ('allowed_ip_prefix', '192.168.1.')")
-    c.execute("INSERT OR IGNORE INTO config VALUES ('class_lat', '10.762622')")
-    c.execute("INSERT OR IGNORE INTO config VALUES ('class_lng', '106.660172')")
-    c.execute("INSERT OR IGNORE INTO config VALUES ('max_distance_meters', '100')")
+    # Khởi tạo giá trị cấu hình mặc định nếu chưa có
+    default_configs = {
+        'is_open': 'true',
+        'selected_date': datetime.date.today().strftime("%Y-%m-%d"),
+        'close_at': '',
+        'network_mode': 'all',
+        'class_lat': '',
+        'class_lng': '',
+        'max_distance_meters': '100'
+    }
+    for key, val in default_configs.items():
+        c.execute("INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)", (key, val))
     
     conn.commit()
     conn.close()
 
 init_db()
 
-def get_config():
-    conn = sqlite3.connect('diem_danh.db')
+def get_configs():
+    conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("SELECT key, value FROM config")
-    config = dict(c.fetchall())
+    rows = c.fetchall()
     conn.close()
-    return config
+    return {row[0]: row[1] for row in rows}
 
-def calculate_distance(lat1, lon1, lat2, lon2):
-    R = 6371000
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
-    delta_phi = math.radians(lat2 - lat1)
-    delta_lambda = math.radians(lon2 - lon1)
-    a = math.sin(delta_phi / 2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2)**2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    return R * c
-
-# --- ROUTES SINH VIÊN ---
+# --- ROUTES GIAO DIỆN ---
 @app.route('/')
-def student_page():
-    return render_template('student.html')
+def index():
+    return render_template('index.html')
 
-@app.route('/api/check-status', methods=['GET'])
-def check_status():
-    config = get_config()
-    is_open = config.get('is_open') == 'true'
-    close_at = config.get('close_at', '')
-
-    if is_open and close_at:
-        now = datetime.now()
-        try:
-            close_time = datetime.strptime(close_at, '%Y-%m-%dT%H:%M')
-            if now >= close_time:
-                is_open = False
-                conn = sqlite3.connect('diem_danh.db')
-                c = conn.cursor()
-                c.execute("UPDATE config SET value = 'false' WHERE key = 'is_open'")
-                conn.commit()
-                conn.close()
-        except Exception:
-            pass
-
-    return jsonify({
-        'is_open': is_open, 
-        'close_at': close_at,
-        'network_mode': config.get('network_mode', 'all')
-    })
-
-@app.route('/api/diem-danh', methods=['POST'])
-def submit_diem_danh():
-    config = get_config()
-    is_open = config.get('is_open') == 'true'
-    
-    if not is_open:
-        return jsonify({'status': 'error', 'message': 'Cổng điểm danh hiện đang ĐÓNG!'}), 400
-
-    data = request.json
-    mssv = data.get('mssv', '').strip()
-    ho_ten = data.get('ho_ten', '').strip()
-    device_id = data.get('device_id', '').strip()
-    user_lat = data.get('lat')
-    user_lng = data.get('lng')
-
-    if not mssv or not ho_ten:
-        return jsonify({'status': 'error', 'message': 'Vui lòng điền đầy đủ thông tin!'}), 400
-
-    ngay_dd = config.get('selected_date') or datetime.now().strftime('%Y-%m-%d')
-    conn = sqlite3.connect('diem_danh.db')
-    c = conn.cursor()
-
-    # 1. Kiểm tra chống trùng MSSV trong ngày
-    c.execute("SELECT * FROM diem_danh WHERE mssv = ? AND ngay_diem_danh = ?", (mssv, ngay_dd))
-    if c.fetchone():
-        conn.close()
-        return jsonify({'status': 'error', 'message': f'MSSV {mssv} đã điểm danh cho ngày hôm nay rồi!'}), 400
-
-    # 2. Kiểm tra chống trùng Thiết bị (Device ID) trong ngày
-    if device_id:
-        c.execute("SELECT mssv FROM diem_danh WHERE device_id = ? AND ngay_diem_danh = ?", (device_id, ngay_dd))
-        exist_device = c.fetchone()
-        if exist_device:
-            conn.close()
-            return jsonify({
-                'status': 'error', 
-                'message': f'Thiết bị này đã được dùng để điểm danh cho MSSV {exist_device[0]}! Vui lòng báo lỗi nếu cần hỗ trợ.'
-            }), 400
-
-    # 3. Kiểm tra Vị trí GPS nếu chọn chế độ GPS
-    mode = config.get('network_mode', 'all')
-    if mode == 'gps_location':
-        if not user_lat or not user_lng:
-            conn.close()
-            return jsonify({'status': 'error', 'message': 'Vui lòng bật GPS/Vị trí trên thiết bị để điểm danh!'}), 400
-        
-        target_lat = float(config.get('class_lat', 0))
-        target_lng = float(config.get('class_lng', 0))
-        max_dist = float(config.get('max_distance_meters', 100))
-
-        dist = calculate_distance(float(user_lat), float(user_lng), target_lat, target_lng)
-        if dist > max_dist:
-            conn.close()
-            return jsonify({'status': 'error', 'message': f'Bạn đang ở ngoài phạm vi cho phép ({int(dist)}m / tối đa {int(max_dist)}m)!'}), 403
-
-    thoi_gian_hien_tai = datetime.now().strftime('%H:%M:%S')
-    c.execute("INSERT INTO diem_danh (mssv, ho_ten, ngay_diem_danh, thoi_gian, device_id) VALUES (?, ?, ?, ?, ?)",
-              (mssv, ho_ten, ngay_dd, thoi_gian_hien_tai, device_id))
-    conn.commit()
-    conn.close()
-    return jsonify({'status': 'success', 'message': 'Điểm danh thành công!'})
-
-# Báo lỗi thiết bị gửi về Admin
-@app.route('/api/bao-loi', methods=['POST'])
-def submit_bao_loi():
-    data = request.json
-    mssv = data.get('mssv', '').strip()
-    ho_ten = data.get('ho_ten', '').strip()
-    ly_do = data.get('ly_do', '').strip()
-    device_id = data.get('device_id', '').strip()
-    
-    ngay_hien_tai = datetime.now().strftime('%Y-%m-%d')
-    thoi_gian = datetime.now().strftime('%H:%M:%S')
-
-    conn = sqlite3.connect('diem_danh.db')
-    c = conn.cursor()
-    c.execute("INSERT INTO bao_loi (mssv, ho_ten, ly_do, ngay, thoi_gian, device_id) VALUES (?, ?, ?, ?, ?, ?)",
-              (mssv, ho_ten, ly_do, ngay_hien_tai, thoi_gian, device_id))
-    conn.commit()
-    conn.close()
-    return jsonify({'status': 'success', 'message': 'Đã gửi báo lỗi thành công tới Cán sự!'})
-
-# --- ROUTES ADMIN ---
 @app.route('/admin')
-def admin_page():
+def admin():
     return render_template('admin.html')
 
+# --- API CÁN SỰ (ADMIN) ---
 @app.route('/api/admin/get-config', methods=['GET'])
-def admin_get_config():
-    config = get_config()
-    return jsonify(config)
+def get_config():
+    return jsonify(get_configs())
 
 @app.route('/api/admin/update-config', methods=['POST'])
 def update_config():
     data = request.json
-    conn = sqlite3.connect('diem_danh.db')
+    conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    
-    keys = ['is_open', 'close_at', 'selected_date', 'network_mode', 'allowed_ip_prefix', 'class_lat', 'class_lng', 'max_distance_meters']
-    for k in keys:
-        if k in data:
-            val = 'true' if data[k] is True else ('false' if data[k] is False else str(data[k]))
-            c.execute("UPDATE config SET value = ? WHERE key = ?", (val, k))
-            
+    for key, val in data.items():
+        c.execute("REPLACE INTO config (key, value) VALUES (?, ?)", (key, str(val)))
     conn.commit()
     conn.close()
-    return jsonify({'status': 'success', 'message': 'Đã cập nhật cấu hình cổng!'})
+    return jsonify({"message": "Cập nhật cấu hình thành công!"})
 
-# Lấy danh sách điểm danh để hiển thị/xóa trên Admin
 @app.route('/api/admin/list-diem-danh', methods=['GET'])
 def list_diem_danh():
-    selected_date = request.args.get('date', '')
-    conn = sqlite3.connect('diem_danh.db')
+    date_filter = request.args.get('date', datetime.date.today().strftime("%Y-%m-%d"))
+    conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    if selected_date:
-        c.execute("SELECT id, mssv, ho_ten, ngay_diem_danh, thoi_gian, device_id FROM diem_danh WHERE ngay_diem_danh = ? ORDER BY id DESC", (selected_date,))
-    else:
-        c.execute("SELECT id, mssv, ho_ten, ngay_diem_danh, thoi_gian, device_id FROM diem_danh ORDER BY id DESC LIMIT 100")
-    
+    c.execute("SELECT id, mssv, ho_ten, ngay, thoi_gian, device_id FROM diem_danh WHERE ngay = ? ORDER BY id DESC", (date_filter,))
     rows = c.fetchall()
     conn.close()
     
-    result = [{'id': r[0], 'mssv': r[1], 'ho_ten': r[2], 'ngay': r[3], 'thoi_gian': r[4], 'device_id': r[5]} for r in rows]
+    result = []
+    for r in rows:
+        result.append({
+            "id": r[0], "mssv": r[1], "ho_ten": r[2], 
+            "ngay": r[3], "thoi_gian": r[4], "device_id": r[5]
+        })
     return jsonify(result)
 
-# Xóa 1 bản ghi điểm danh
 @app.route('/api/admin/delete-diem-danh', methods=['POST'])
 def delete_diem_danh():
-    record_id = request.json.get('id')
-    conn = sqlite3.connect('diem_danh.db')
+    rec_id = request.json.get('id')
+    conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute("DELETE FROM diem_danh WHERE id = ?", (record_id,))
+    c.execute("DELETE FROM diem_danh WHERE id = ?", (rec_id,))
     conn.commit()
     conn.close()
-    return jsonify({'status': 'success', 'message': 'Đã xóa bản ghi điểm danh!'})
+    return jsonify({"message": "Đã xóa bản ghi!"})
 
-# Lấy danh sách báo lỗi thiết bị
 @app.route('/api/admin/list-bao-loi', methods=['GET'])
 def list_bao_loi():
-    conn = sqlite3.connect('diem_danh.db')
+    conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute("SELECT id, mssv, ho_ten, ly_do, ngay, thoi_gian, device_id FROM bao_loi WHERE trang_thai = 'pending' ORDER BY id DESC")
+    c.execute("SELECT id, mssv, ho_ten, ly_do, device_id, ngay, thoi_gian FROM bao_loi ORDER BY id DESC")
     rows = c.fetchall()
     conn.close()
-    result = [{'id': r[0], 'mssv': r[1], 'ho_ten': r[2], 'ly_do': r[3], 'ngay': r[4], 'thoi_gian': r[5], 'device_id': r[6]} for r in rows]
+    
+    result = []
+    for r in rows:
+        result.append({
+            "id": r[0], "mssv": r[1], "ho_ten": r[2], 
+            "ly_do": r[3], "device_id": r[4], "ngay": r[5], "thoi_gian": r[6]
+        })
     return jsonify(result)
 
-# Giải quyết báo lỗi (Reset lượt điểm danh thiết bị)
 @app.route('/api/admin/resolve-bao-loi', methods=['POST'])
 def resolve_bao_loi():
     data = request.json
-    loi_id = data.get('id')
+    bl_id = data.get('id')
     device_id = data.get('device_id')
     action = data.get('action') # 'reset' hoặc 'dismiss'
 
-    conn = sqlite3.connect('diem_danh.db')
+    conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    
-    if action == 'reset' and device_id:
-        # Xóa dữ liệu điểm danh gắn liền với thiết bị đó trong ngày để cho điểm danh lại
-        ngay_hien_tai = datetime.now().strftime('%Y-%m-%d')
-        c.execute("DELETE FROM diem_danh WHERE device_id = ? AND ngay_diem_danh = ?", (device_id, ngay_hien_tai))
-    
-    c.execute("UPDATE bao_loi SET trang_thai = 'resolved' WHERE id = ?", (loi_id,))
+    if action == 'reset':
+        c.execute("DELETE FROM diem_danh WHERE device_id = ?", (device_id,))
+    c.execute("DELETE FROM bao_loi WHERE id = ?", (bl_id,))
     conn.commit()
     conn.close()
-    return jsonify({'status': 'success', 'message': 'Đã xử lý xong yêu cầu báo lỗi!'})
+    return jsonify({"message": "Đã xử lý yêu cầu!"})
 
 @app.route('/api/admin/export', methods=['GET'])
-def export_excel():
-    filter_type = request.args.get('type')
-    filter_val = request.args.get('value')
+def export_data():
+    export_type = request.args.get('type', 'all')
+    val = request.args.get('value', '')
+    
+    conn = sqlite3.connect(DB_NAME)
+    query = "SELECT mssv AS 'MSSV', ho_ten AS 'Họ và Tên', email AS 'Email', ngay AS 'Ngày', thoi_gian AS 'Thời Gian' FROM diem_danh"
+    
+    if export_type == 'day' and val:
+        query += f" WHERE ngay = '{val}'"
+    elif export_type == 'month' and val:
+        query += f" WHERE ngay LIKE '{val}%'"
+        
+    df = pd.read_sql_query(query, conn)
+    conn.close()
+    
+    file_path = "danh_sach_diem_danh.xlsx"
+    df.to_excel(file_path, index=False)
+    return send_file(file_path, as_attachment=True)
 
-    conn = sqlite3.connect('diem_danh.db')
-    query = "SELECT mssv AS 'Mã Sinh Viên', ho_ten AS 'Họ và Tên', ngay_diem_danh AS 'Ngày', thoi_gian AS 'Giờ Điểm Danh' FROM diem_danh"
-    params = []
+# --- API SINH VIÊN ---
+@app.route('/api/student/checkin', methods=['POST'])
+def student_checkin():
+    data = request.json
+    mssv = data.get('mssv')
+    ho_ten = data.get('ho_ten')
+    email = data.get('email', '')
+    device_id = data.get('device_id')
+    user_lat = data.get('lat')
+    user_lng = data.get('lng')
 
-    if filter_type == 'day' and filter_val:
-        query += " WHERE ngay_diem_danh = ?"
-        params.append(filter_val)
-    elif filter_type == 'month' and filter_val:
-        query += " WHERE strftime('%Y-%m', ngay_diem_danh) = ?"
-        params.append(filter_val)
+    configs = get_configs()
+    
+    if configs.get('is_open') != 'true':
+        return jsonify({"success": False, "message": "Cổng điểm danh hiện đang ĐÓNG!"})
 
-    df = pd.read_sql_query(query, conn, params=params)
+    today = datetime.date.today().strftime("%Y-%m-%d")
+    now_time = datetime.datetime.now().strftime("%H:%M:%S")
+
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+
+    # Kiểm tra trùng thiết bị hoặc MSSV trong ngày
+    c.execute("SELECT id FROM diem_danh WHERE ngay = ? AND (mssv = ? OR device_id = ?)", (today, mssv, device_id))
+    if c.fetchone():
+        conn.close()
+        return jsonify({"success": False, "message": "Thiết bị hoặc MSSV này đã điểm danh hôm nay rồi!"})
+
+    # Lưu dữ liệu
+    c.execute("INSERT INTO diem_danh (mssv, ho_ten, email, ngay, thoi_gian, device_id) VALUES (?, ?, ?, ?, ?, ?)",
+              (mssv, ho_ten, email, today, now_time, device_id))
+    conn.commit()
     conn.close()
 
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='DiemDanh')
-    output.seek(0)
+    return jsonify({"success": True, "message": f"Điểm danh thành công lúc {now_time}!"})
 
-    filename = f"diem_danh_{filter_val if filter_val else 'tat_ca'}.xlsx"
-    return send_file(output, download_name=filename, as_attachment=True, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+@app.route('/api/student/bao-loi', methods=['POST'])
+def student_bao_loi():
+    data = request.json
+    today = datetime.date.today().strftime("%Y-%m-%d")
+    now_time = datetime.datetime.now().strftime("%H:%M:%S")
+
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("INSERT INTO bao_loi (mssv, ho_ten, ly_do, device_id, ngay, thoi_gian) VALUES (?, ?, ?, ?, ?, ?)",
+              (data.get('mssv'), data.get('ho_ten'), data.get('ly_do'), data.get('device_id'), today, now_time))
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Đã gửi yêu cầu báo lỗi đến Cán sự lớp!"})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
