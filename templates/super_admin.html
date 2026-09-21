@@ -2,35 +2,153 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <title>Super Admin System</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super Admin System - Quản Trị Hệ Thống</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #e9ecef; }
-        .box { background: white; padding: 25px; border-radius: 8px; max-width: 600px; margin: auto; }
-        button { padding: 8px 15px; margin: 5px; }
+        .box { background: white; padding: 25px; border-radius: 8px; max-width: 700px; margin: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .section { margin-bottom: 25px; border-bottom: 1px solid #dee2e6; padding-bottom: 20px; }
+        h2 { color: #343a40; text-align: center; margin-top: 0; }
+        h3 { color: #495057; font-size: 16px; margin-bottom: 10px; }
+        input, select { padding: 8px 12px; margin: 4px 0; border: 1px solid #ced4da; border-radius: 4px; width: calc(100% - 26px); box-sizing: border-box; }
+        .input-inline { width: auto; display: inline-block; }
+        button { padding: 9px 15px; margin: 5px 2px; border-radius: 4px; border: none; font-weight: bold; cursor: pointer; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-success:hover { background: #218838; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-danger:hover { background: #c82333; }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-primary:hover { background: #0069d9; }
+        .badge { background: #6c757d; color: white; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
     </style>
 </head>
 <body>
 <div class="box">
     <h2>Bảng Điều Khiển Super Admin</h2>
-    <p>Quyền hạn cao nhất - Quản trị viên hệ thống</p>
+    <p style="text-align: center; color: #6c757d; font-size: 14px;">Quyền hạn cao nhất - Quản trị viên hệ thống</p>
     <hr>
     
-    <h3>Khóa/Mở Premium Thủ Công</h3>
-    <input type="text" id="sp_student_id" placeholder="Nhập Mã Sinh Viên">
-    <button onclick="setPremium(1)" style="background: #28a745; color:white; border:none;">Mở Premium</button>
-    <button onclick="setPremium(0)" style="background: #dc3545; color:white; border:none;">Khóa Premium</button>
-    <br><br>
-    <a href="/logout">Đăng xuất</a>
+    <!-- 1. Khóa / Mở Premium Thủ Công -->
+    <div class="section">
+        <h3>1. Khóa / Mở Premium Sinh Viên (Toàn Hệ Thống)</h3>
+        <input type="text" id="sp_student_id" placeholder="Nhập Mã Sinh Viên (MSSV)">
+        <br>
+        <button onclick="setPremium(1)" class="btn-success">Mở Premium</button>
+        <button onclick="setPremium(0)" class="btn-danger">Khóa Premium</button>
+    </div>
+
+    <!-- 2. Quản Lý Tài Khoản Cán Sự Lớp (Class Admin) -->
+    <div class="section">
+        <h3>2. Quản Lý / Cấp Tài Khoản Cán Sự Lớp</h3>
+        <input type="text" id="admin_username" placeholder="Tên đăng nhập Cán sự"><br>
+        <input type="password" id="admin_password" placeholder="Mật khẩu"><br>
+        <input type="text" id="admin_class_code" placeholder="Mã lớp quản lý (Ví dụ: CNTT-K65)"><br>
+        <button onclick="createClassAdmin()" class="btn-primary">Tạo Tài Khoản Cán Sự</button>
+        <button onclick="deleteClassAdmin()" class="btn-danger">Xóa Tài Khoản Cán Sự</button>
+    </div>
+
+    <!-- 3. Cấu Hình Tọa Độ GPS & Bán Kính Cho Điểm Danh -->
+    <div class="section">
+        <h3>3. Cấu Hình Tọa Độ & Bán Kính Điểm Danh Chuẩn</h3>
+        <input type="text" id="cfg_lat" placeholder="Vĩ độ (Latitude) - VD: 16.0738">
+        <input type="text" id="cfg_lng" placeholder="Kinh độ (Longitude) - VD: 108.1499">
+        <input type="number" id="cfg_radius" placeholder="Bán kính cho phép (mét) - VD: 100">
+        <button onclick="updateSystemConfig()" class="btn-primary">Cập Nhật Cấu Hình GPS</button>
+    </div>
+
+    <!-- 4. Dọn Dẹp Dữ Liệu Báo Lỗi -->
+    <div class="section">
+        <h3>4. Bảo Trì & Dọn Dẹp Hệ Thống</h3>
+        <button onclick="clearErrorReports()" class="btn-danger">🗑️ Xóa Tất Cả Báo Lỗi Sự Cố</button>
+    </div>
+
+    <div style="text-align: center; margin-top: 15px;">
+        <a href="/logout" style="color: #dc3545; font-weight: bold; text-decoration: none;">[Đăng xuất Hệ Thống]</a>
+    </div>
 </div>
 
 <script>
+    // 1. Thay đổi trạng thái Premium
     async function setPremium(status) {
-        const studentId = document.getElementById('sp_student_id').value;
+        const studentId = document.getElementById('sp_student_id').value.trim();
+        if (!studentId) {
+            alert('Vui lòng nhập Mã sinh viên!');
+            return;
+        }
+
         const res = await fetch('/api/super-admin/toggle-premium-manual', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ student_id: studentId, status: status })
         });
+        const data = await res.json();
+        alert(data.message);
+    }
+
+    // 2. Tạo tài khoản Cán sự lớp
+    async function createClassAdmin() {
+        const username = document.getElementById('admin_username').value.trim();
+        const password = document.getElementById('admin_password').value.trim();
+        const classCode = document.getElementById('admin_class_code').value.trim();
+
+        if (!username || !password || !classCode) {
+            alert('Vui lòng điền đầy đủ Tên đăng nhập, Mật khẩu và Mã lớp!');
+            return;
+        }
+
+        const res = await fetch('/api/super-admin/create-class-admin', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ username, password, class_code: classCode })
+        });
+        const data = await res.json();
+        alert(data.message);
+    }
+
+    // 2.2 Xóa tài khoản Cán sự lớp
+    async function deleteClassAdmin() {
+        const username = document.getElementById('admin_username').value.trim();
+        if (!username) {
+            alert('Vui lòng nhập Tên đăng nhập Cán sự cần xóa!');
+            return;
+        }
+
+        if (!confirm(`Bạn có chắc chắn muốn xóa tài khoản cán sự: ${username}?`)) return;
+
+        const res = await fetch('/api/super-admin/delete-class-admin', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ username })
+        });
+        const data = await res.json();
+        alert(data.message);
+    }
+
+    // 3. Cập nhật tọa độ GPS
+    async function updateSystemConfig() {
+        const lat = document.getElementById('cfg_lat').value.trim();
+        const lng = document.getElementById('cfg_lng').value.trim();
+        const radius = document.getElementById('cfg_radius').value.trim();
+
+        if (!lat || !lng || !radius) {
+            alert('Vui lòng điền đủ Vĩ độ, Kinh độ và Bán kính!');
+            return;
+        }
+
+        const res = await fetch('/api/super-admin/update-config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ lat: parseFloat(lat), lng: parseFloat(lng), radius: parseInt(radius) })
+        });
+        const data = await res.json();
+        alert(data.message);
+    }
+
+    // 4. Xóa danh sách báo lỗi
+    async function clearErrorReports() {
+        if (!confirm('Bạn có chắc chắn muốn xóa toàn bộ lịch sử báo lỗi sự cố từ sinh viên?')) return;
+
+        const res = await fetch('/api/super-admin/clear-errors', { method: 'POST' });
         const data = await res.json();
         alert(data.message);
     }
