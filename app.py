@@ -560,6 +560,102 @@ def export_excel():
         download_name='danh_sach_diem_danh_chi_tiet.xlsx',
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
+# Bổ sung vào hàm init_db() đoạn tạo bảng cấu hình tính năng kinh doanh (nếu chưa có)
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS system_features (
+        feature_key TEXT PRIMARY KEY,
+        feature_name TEXT,
+        is_free_tier INTEGER DEFAULT 1
+    );
+''')
+@app.route('/api/class-admin/register', methods=['POST'])
+def register_class_admin():
+    data = request.json or {}
+    username = data.get('username', '').strip()
+    password = data.get('password', '').strip()
+    class_code = data.get('class_code', '').strip().upper() # Mã lớp viết hoa để phân biệt
+
+    if not username or not password or not class_code:
+        return jsonify({'success': False, 'message': 'Vui lòng nhập đầy đủ Tài khoản, Mật khẩu và Mã lớp!'})
+
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        # Kiểm tra xem mã lớp đã tồn tại chưa để tránh trùng lặp giữa các lớp
+        if db_type == "postgres":
+            cursor.execute("SELECT * FROM class_admins WHERE class_code = %s", (class_code,))
+        else:
+            cursor.execute("SELECT * FROM class_admins WHERE class_code = ?", (class_code,))
+        
+        if cursor.fetchone():
+            conn.close()
+            return jsonify({'success': False, 'message': f'Mã lớp "{class_code}}" đã tồn tại! Vui lòng chọn mã lớp khác.'})
+
+        # Thêm tài khoản quản lý lớp mới
+        if db_type == "postgres":
+            cursor.execute('''
+                INSERT INTO class_admins (username, password, class_code, is_super)
+                VALUES (%s, %s, %s, 0)
+            ''', (username, password, class_code))
+        else:
+            cursor.execute('''
+                INSERT INTO class_admins (username, password, class_code, is_super)
+                VALUES (?, ?, ?, 0)
+            ''', (username, password, class_code))
+
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True, 'message': f'Tạo lớp thành công với mã: {class_code}!'})
+    except Exception as e:
+        conn.close()
+        return jsonify({'success': False, 'message': f'Lỗi: Tên tài khoản quản lý này đã được sử dụng.'})
+@app.route('/api/student/remember-session', methods=['POST'])
+def remember_student_session():
+    data = request.json or {}
+    student_id = data.get('student_id', '').strip()
+    class_code = data.get('class_code', '').strip().upper()
+
+    if not student_id or not class_code:
+        return jsonify({'success': False, 'message': 'Thiếu thông tin sinh viên hoặc mã lớp.'})
+
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+
+    # Kiểm tra lớp có tồn tại không
+    if db_type == "postgres":
+        cursor.execute("SELECT * FROM class_admins WHERE class_code = %s", (class_code,))
+    else:
+        cursor.execute("SELECT * FROM class_admins WHERE class_code = ?", (class_code,))
+    
+    if not cursor.fetchone():
+        conn.close()
+        return jsonify({'success': False, 'message': 'Mã lớp không tồn tại trong hệ thống!'})
+
+    # Lưu vào session của Flask để sinh viên giữ trạng thái đăng nhập
+    session['student_id'] = student_id
+    session['class_code'] = class_code
+    conn.close()
+    
+    return jsonify({'success': True, 'message': 'Đã ghi nhớ phiên đăng nhập sinh viên.'})
+@app.route('/api/admin/toggle-feature-tier', methods=['POST'])
+def toggle_feature_tier():
+    data = request.json or {}
+    feature_key = data.get('feature_key')
+    is_free = data.get('is_free') # 1 nếu cho dùng thử free, 0 nếu ép lên Premium
+
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+
+    if db_type == "postgres":
+        cursor.execute("UPDATE system_features SET is_free_tier = %s WHERE feature_key = %s", (is_free, feature_key))
+    else:
+        cursor.execute("UPDATE system_features SET is_free_tier = ? WHERE feature_key = ?", (is_free, feature_key))
+
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'message': 'Đã cập nhật trạng thái kinh doanh tính năng thành công!'})
+
 
 # ==========================================
 # 7. KHỞI CHẠY SERVER VỚI CỔNG ĐỘNG
