@@ -52,147 +52,157 @@
             <button class="btn btn-premium" id="btn-save-session" onclick="savePremiumAuth()">💾 Lưu Tài Khoản (Đăng Nhập 1-Chạm)</button>
         </div>
 
-        <button class="btn btn-checkin" onclick="thucHienDiemDanh()">📍 ĐIỂM DANH NGAY</button>
+      <!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sinh Viên - Điểm Danh Online</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f6f9; }
+        .card { background: white; padding: 20px; border-radius: 8px; max-width: 450px; margin: 0 auto; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        button { width: 100%; padding: 10px; background-color: #28a745; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; }
+        button:hover { background-color: #218838; }
+        .badge { display: inline-block; padding: 4px 8px; background: #ffc107; color: #000; border-radius: 4px; font-size: 12px; font-weight: bold; }
+        .alert { padding: 10px; margin-top: 15px; border-radius: 4px; display: none; }
+        .alert-success { background: #d4edda; color: #155724; }
+        .alert-danger { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
 
-        <div id="status-msg" class="status-box"></div>
+<div class="card">
+    <h2>Điểm Danh Sinh Viên <span id="premiumBadge" class="badge" style="display:none;">PREMIUM 1-CLICK</span></h2>
+    <div id="alertBox" class="alert"></div>
 
-        <!-- PHẦN BÁO LỖI THIẾT BỊ -->
-        <div class="link-toggle">
-            Gặp sự cố thiết bị/GPS? <a href="#" onclick="toggleBaoLoi(); return false;">Gửi báo lỗi cho Cán sự</a>
+    <form id="checkinForm">
+        <div class="form-group">
+            <label>Mã Sinh Viên:</label>
+            <input type="text" id="student_id" required onblur="checkStudentStatus()">
         </div>
 
-        <div id="form-bao-loi" style="display: none; background: #fff3cd; padding: 15px; border-radius: 8px; margin-top: 15px; border: 1px solid #ffeeba;">
-            <h4 style="margin-top:0;">Gửi Yêu Cầu Báo Lỗi</h4>
-            <input type="text" id="bl_mssv" placeholder="Nhập MSSV" style="margin-bottom:8px;">
-            <input type="text" id="bl_hoten" placeholder="Nhập Họ Tên" style="margin-bottom:8px;">
-            <textarea id="bl_lydo" style="width:100%; height:50px; border-radius:4px; padding:5px;" placeholder="Lý do (VD: Đổi điện thoại, lỗi GPS...)"></textarea>
-            <button class="btn" style="background:#ffc107; color:#000;" onclick="sendBaoLoi()">Gửi Yêu Cầu</button>
+        <div id="extraFields">
+            <div class="form-group">
+                <label>Họ và Tên:</label>
+                <input type="text" id="full_name">
+            </div>
+            <div class="form-group">
+                <label>Mã Lớp:</label>
+                <input type="text" id="class_code">
+            </div>
         </div>
-    </div>
 
-    <script>
-        // Khởi tạo Device ID duy nhất lưu ở trình duyệt
-        let deviceId = localStorage.getItem('user_device_id');
-        if (!deviceId) {
-            deviceId = 'dev_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
-            localStorage.setItem('user_device_id', deviceId);
+        <button type="button" onclick="submitCheckin()">Thực Hiện Điểm Danh</button>
+    </form>
+    <p style="text-align: center; margin-top: 15px;"><a href="/privacy-policy">Chính sách & Quyền riêng tư</a></p>
+</div>
+
+<script>
+    let isRegistered = false;
+    let hasPremium = false;
+
+    // Tự động khôi phục dữ liệu từ localStorage
+    window.onload = function() {
+        if(localStorage.getItem('saved_student_id')) {
+            document.getElementById('student_id').value = localStorage.getItem('saved_student_id');
+            checkStudentStatus();
         }
+    };
 
-        // Kiểm tra Auto-Login khi tải trang (Premium Feature)
-        document.addEventListener("DOMContentLoaded", () => {
-            checkSavedSession();
+    async function checkStudentStatus() {
+        const studentId = document.getElementById('student_id').value.trim();
+        if (!studentId) return;
+
+        const res = await fetch('/api/student/check-status', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ student_id: studentId })
         });
+        const data = await res.json();
 
-        function checkSavedSession() {
-            const savedUser = JSON.parse(localStorage.getItem('student_premium_session'));
-            if (savedUser && savedUser.mssv) {
-                document.getElementById('mssv').value = savedUser.mssv;
-                document.getElementById('ho_ten').value = savedUser.ho_ten;
-                
-                document.getElementById('user-info-text').innerText = `Xin chào: ${savedUser.ho_ten} (${savedUser.mssv})`;
-                document.getElementById('premium-welcome-box').style.display = 'block';
-                document.getElementById('form-inputs').style.display = 'none'; // Ẩn ô nhập cho gọn
-            }
-        }
+        if (data.registered) {
+            isRegistered = true;
+            hasPremium = data.has_premium;
+            document.getElementById('full_name').value = data.full_name;
+            document.getElementById('class_code').value = data.class_code;
 
-        async function savePremiumAuth() {
-            const mssv = document.getElementById('mssv').value.trim();
-            const ho_ten = document.getElementById('ho_ten').value.trim();
-            const email = document.getElementById('email').value.trim();
-
-            if (!mssv || !ho_ten || !email) {
-                alert("Vui lòng điền đủ MSSV, Họ tên và Email!");
-                return;
-            }
-
-            const res = await fetch('/api/student/auth', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ mssv, ho_ten, email })
-            });
-            const data = await res.json();
-
-            if (data.success) {
-                localStorage.setItem('student_premium_session', JSON.stringify({ mssv, ho_ten, email }));
-                alert("Đã kích hoạt tính năng Premium! Lần sau bạn không cần nhập lại nữa.");
-                checkSavedSession();
+            if (hasPremium) {
+                document.getElementById('extraFields').style.display = 'none';
+                document.getElementById('premiumBadge').style.display = 'inline-block';
             } else {
-                alert(data.message);
+                document.getElementById('extraFields').style.display = 'block';
+                document.getElementById('premiumBadge').style.display = 'none';
             }
+        } else {
+            isRegistered = false;
+            hasPremium = false;
+            document.getElementById('extraFields').style.display = 'block';
+            document.getElementById('premiumBadge').style.display = 'none';
+        }
+    }
+
+    function submitCheckin() {
+        const alertBox = document.getElementById('alertBox');
+        alertBox.style.display = 'none';
+
+        if (!navigator.geolocation) {
+            alert('Trình duyệt không hỗ trợ định vị GPS!');
+            return;
         }
 
-        function logout() {
-            localStorage.removeItem('student_premium_session');
-            document.getElementById('premium-welcome-box').style.display = 'none';
-            document.getElementById('form-inputs').style.display = 'block';
-            document.getElementById('mssv').value = '';
-            document.getElementById('ho_ten').value = '';
-        }
+        navigator.geolocation.getCurrentPosition(async (pos) => {
+            const studentId = document.getElementById('student_id').value.trim();
+            const fullName = document.getElementById('full_name').value.trim();
+            const classCode = document.getElementById('class_code').value.trim();
 
-        function thucHienDiemDanh() {
-            const mssv = document.getElementById('mssv').value.trim();
-            const ho_ten = document.getElementById('ho_ten').value.trim();
-
-            if (!mssv || !ho_ten) {
-                showStatus("Vui lòng nhập MSSV và Họ tên!", false);
-                return;
-            }
-
-            showStatus("Đang lấy vị trí GPS...", true);
-
-            if ("geolocation" in navigator) {
-                navigator.geolocation.getCurrentPosition((pos) => {
-                    sendCheckin(mssv, ho_ten, pos.coords.latitude, pos.coords.longitude);
-                }, (err) => {
-                    // Nếu lỗi GPS vẫn thử gửi để backend kiểm tra xem có bắt bắt buộc GPS không
-                    sendCheckin(mssv, ho_ten, null, null);
-                }, { enableHighAccuracy: true, timeout: 7000 });
-            } else {
-                sendCheckin(mssv, ho_ten, null, null);
-            }
-        }
-
-        async function sendCheckin(mssv, ho_ten, lat, lng) {
-            try {
-                const res = await fetch('/api/student/checkin', {
+            // Đăng ký lần đầu nếu chưa có tài khoản
+            if (!isRegistered) {
+                const regRes = await fetch('/api/student/register-first-time', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ mssv, ho_ten, device_id: deviceId, lat, lng })
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ student_id: studentId, full_name: fullName, class_code: classCode })
                 });
-                const data = await res.json();
-                showStatus(data.message, data.success);
-            } catch (e) {
-                showStatus("Không thể kết nối tới máy chủ điểm danh!", false);
+                const regData = await regRes.json();
+                if (!regData.success) {
+                    showAlert(regData.message, false);
+                    return;
+                }
             }
-        }
 
-        function showStatus(msg, isSuccess) {
-            const box = document.getElementById('status-msg');
-            box.innerText = msg;
-            box.className = 'status-box ' + (isSuccess ? 'status-success' : 'status-error');
-            box.style.display = 'block';
-        }
-
-        function toggleBaoLoi() {
-            const f = document.getElementById('form-bao-loi');
-            f.style.display = f.style.display === 'none' ? 'block' : 'none';
-        }
-
-        async function sendBaoLoi() {
-            const mssv = document.getElementById('bl_mssv').value;
-            const ho_ten = document.getElementById('bl_hoten').value;
-            const ly_do = document.getElementById('bl_lydo').value;
-
-            if(!mssv || !ho_ten || !ly_do) { alert("Vui lòng nhập đầy đủ!"); return; }
-
-            await fetch('/api/student/bao-loi', {
+            // Thực hiện Điểm Danh
+            const checkinRes = await fetch('/api/student/checkin', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ mssv, ho_ten, ly_do, device_id: deviceId })
+                body: JSON.stringify({
+                    student_id: studentId,
+                    full_name: fullName,
+                    class_code: classCode,
+                    lat: pos.coords.latitude,
+                    lng: pos.coords.longitude
+                })
             });
-            alert("Đã gửi báo lỗi thành công!");
-            toggleBaoLoi();
-        }
-    </script>
+
+            const checkinData = await checkinRes.json();
+            if (checkinData.success) {
+                localStorage.setItem('saved_student_id', studentId);
+                showAlert(checkinData.message, true);
+            } else {
+                showAlert(checkinData.message, false);
+            }
+        }, (err) => {
+            showAlert('Vui lòng bật quyền truy cập vị trí GPS!', false);
+        });
+    }
+
+    function showAlert(msg, isSuccess) {
+        const box = document.getElementById('alertBox');
+        box.innerText = msg;
+        box.className = 'alert ' + (isSuccess ? 'alert-success' : 'alert-danger');
+        box.style.display = 'block';
+    }
+</script>
 </body>
 </html>
