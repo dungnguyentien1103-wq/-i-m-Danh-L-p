@@ -590,7 +590,7 @@ def register_class_admin():
         
         if cursor.fetchone():
             conn.close()
-            return jsonify({'success': False, 'message': f'Mã lớp "{class_code}}" đã tồn tại! Vui lòng chọn mã lớp khác.'})
+            return jsonify({'success': False, 'message': f'Mã lớp "{class_code}" đã tồn tại! Vui lòng chọn mã lớp khác.'})
 
         # Thêm tài khoản quản lý lớp mới
         if db_type == "postgres":
