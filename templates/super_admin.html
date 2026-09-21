@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Super Admin System</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #e9ecef; }
+        .box { background: white; padding: 25px; border-radius: 8px; max-width: 600px; margin: auto; }
+        button { padding: 8px 15px; margin: 5px; }
+    </style>
+</head>
+<body>
+<div class="box">
+    <h2>Bảng Điều Khiển Super Admin</h2>
+    <p>Quyền hạn cao nhất - Quản trị viên hệ thống</p>
+    <hr>
+    
+    <h3>Khóa/Mở Premium Thủ Công</h3>
+    <input type="text" id="sp_student_id" placeholder="Nhập Mã Sinh Viên">
+    <button onclick="setPremium(1)" style="background: #28a745; color:white; border:none;">Mở Premium</button>
+    <button onclick="setPremium(0)" style="background: #dc3545; color:white; border:none;">Khóa Premium</button>
+    <br><br>
+    <a href="/logout">Đăng xuất</a>
+</div>
+
+<script>
+    async function setPremium(status) {
+        const studentId = document.getElementById('sp_student_id').value;
+        const res = await fetch('/api/super-admin/toggle-premium-manual', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ student_id: studentId, status: status })
+        });
+        const data = await res.json();
+        alert(data.message);
+    }
+</script>
+</body>
+</html>
