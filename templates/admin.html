@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Bảng Điều Hành Cán Sự Lớp</title>
-    <!-- Nhúng Leaflet Engine -->
+
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
@@ -53,20 +53,20 @@
         </select>
 
         <div id="map-container" style="display:none; margin-top: 15px;">
-            <p><i><b>Mẹo:</b> Nhập trực tiếp tọa độ bên dưới rồi bấm <b>"Áp dụng"</b>, hoặc kéo Marker trên Google Maps.</i></p>
+            <p><i><b>Mẹo:</b> Hệ thống đã tự động định vị vị trí của bạn. Bạn cũng có thể kéo Marker hoặc gõ tọa độ rồi bấm "Áp dụng".</i></p>
             
             <div class="coord-group">
                 <div class="coord-box">
                     <label>Vĩ độ (Latitude):</label>
-                    <input type="number" step="any" id="class_lat" style="width: 100%;" placeholder="Ví dụ: 10.762622">
+                    <input type="number" step="any" id="class_lat" style="width: 100%;" placeholder="Vĩ độ">
                 </div>
                 <div class="coord-box">
                     <label>Kinh độ (Longitude):</label>
-                    <input type="number" step="any" id="class_lng" style="width: 100%;" placeholder="Ví dụ: 106.660172">
+                    <input type="number" step="any" id="class_lng" style="width: 100%;" placeholder="Kinh độ">
                 </div>
                 <div class="coord-box" style="flex: 0 0 100%;">
                     <button class="btn-apply" onclick="applyManualCoords()">📍 Áp Dụng Tọa Độ Nhập Tay</button>
-                    <button class="btn-quick" style="background:#17a2b8;" onclick="getCurrentGPS()">🎯 Lấy Tọa Độ Hiện Tại Của Tôi</button>
+                    <button class="btn-quick" style="background:#17a2b8;" onclick="getCurrentGPS(true)">🎯 Cập Nhật Lại GPS Của Tôi</button>
                     <button class="btn-quick" style="background:#e83e8c;" onclick="switchMapStyle('roadmap')">🗺️ Bản đồ Đường</button>
                     <button class="btn-quick" style="background:#fd7e14;" onclick="switchMapStyle('satellite')">🛰️ Bản đồ Vệ Tinh</button>
                 </div>
@@ -157,11 +157,13 @@
 
     <script>
         let map, marker, circle, googleTileLayer;
-        let currentMapStyle = 'm'; // 'm' cho Đường phố, 's,h' cho Vệ tinh
+        let currentMapStyle = 'm'; 
 
         document.addEventListener("DOMContentLoaded", async () => {
-            document.getElementById('selected_date').value = new Date().toISOString().split('T')[0];
-            document.getElementById('filter-view-date').value = new Date().toISOString().split('T')[0];
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('selected_date').value = today;
+            document.getElementById('filter-view-date').value = today;
+            
             await loadConfig();
             loadBaoLoiList();
             loadDiemDanhList();
@@ -169,9 +171,8 @@
 
         function initMap(lat, lng, radius) {
             if (!map) {
-                map = L.map('map').setView([lat, lng], 16);
+                map = L.map('map').setView([lat, lng], 17);
                 
-                // Nạp Layer Google Maps
                 googleTileLayer = L.tileLayer('https://{s}.google.com/vt/lyrs=' + currentMapStyle + '&x={x}&y={y}&z={z}', {
                     maxZoom: 20,
                     subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
@@ -197,7 +198,6 @@
             }, 300);
         }
 
-        // Chuyển đổi giữa Chế độ Đường Phố và Vệ Tinh Google Maps
         function switchMapStyle(style) {
             currentMapStyle = (style === 'satellite') ? 's,h' : 'm';
             if (googleTileLayer && map) {
@@ -238,15 +238,17 @@
             updateMapPosition(lat, lng, radius);
         }
 
-        function getCurrentGPS() {
+        // Hàm lấy vị trí GPS người dùng
+        function getCurrentGPS(showAlert = false) {
             if ("geolocation" in navigator) {
                 navigator.geolocation.getCurrentPosition((position) => {
                     updateCoordsUI(position.coords.latitude, position.coords.longitude);
+                    if (showAlert) alert("Đã cập nhật vị trí của bạn thành công!");
                 }, (err) => {
-                    alert("Không thể lấy vị trí hiện tại. Vui lòng bật định vị GPS!");
-                });
+                    if (showAlert) alert("Không thể lấy vị trí GPS. Vui lòng bật định vị trên thiết bị!");
+                }, { enableHighAccuracy: true, timeout: 5000 });
             } else {
-                alert("Trình duyệt không hỗ trợ định vị!");
+                if (showAlert) alert("Trình duyệt không hỗ trợ định vị!");
             }
         }
 
@@ -265,12 +267,20 @@
             const container = document.getElementById('map-container');
             if (mode === 'gps_location') {
                 container.style.display = 'block';
-                const lat = parseFloat(document.getElementById('class_lat').value) || 10.762622;
-                const lng = parseFloat(document.getElementById('class_lng').value) || 106.660172;
-                const radius = parseFloat(document.getElementById('max_distance_meters').value) || 100;
                 
+                let lat = parseFloat(document.getElementById('class_lat').value);
+                let lng = parseFloat(document.getElementById('class_lng').value);
+                const radius = parseFloat(document.getElementById('max_distance_meters').value) || 100;
+
                 setTimeout(() => {
-                    initMap(lat, lng, radius);
+                    // Nếu chưa từng lưu tọa độ nào, tự động kích hoạt xin GPS vị trí thực tế
+                    if (!lat || !lng) {
+                        initMap(16.047079, 108.206230, radius); // Mặc định tại Đà Nẵng nếu chờ GPS
+                        getCurrentGPS(false);
+                    } else {
+                        initMap(lat, lng, radius);
+                        getCurrentGPS(false); // Vẫn ưu tiên tự cập nhật GPS mới nhất
+                    }
                 }, 150);
             } else {
                 container.style.display = 'none';
@@ -278,18 +288,22 @@
         }
 
         async function loadConfig() {
-            const res = await fetch('/api/admin/get-config');
-            const data = await res.json();
-            
-            document.getElementById('is_open').checked = data.is_open === 'true';
-            document.getElementById('selected_date').value = data.selected_date || new Date().toISOString().split('T')[0];
-            document.getElementById('close_at').value = data.close_at || '';
-            document.getElementById('network_mode').value = data.network_mode || 'all';
-            document.getElementById('class_lat').value = data.class_lat || '10.762622';
-            document.getElementById('class_lng').value = data.class_lng || '106.660172';
-            document.getElementById('max_distance_meters').value = data.max_distance_meters || '100';
+            try {
+                const res = await fetch('/api/admin/get-config');
+                const data = await res.json();
+                
+                document.getElementById('is_open').checked = data.is_open === 'true';
+                document.getElementById('selected_date').value = data.selected_date || new Date().toISOString().split('T')[0];
+                document.getElementById('close_at').value = data.close_at || '';
+                document.getElementById('network_mode').value = data.network_mode || 'all';
+                document.getElementById('class_lat').value = data.class_lat || '';
+                document.getElementById('class_lng').value = data.class_lng || '';
+                document.getElementById('max_distance_meters').value = data.max_distance_meters || '100';
 
-            toggleMapDisplay();
+                toggleMapDisplay();
+            } catch (err) {
+                console.error("Lỗi nạp cấu hình:", err);
+            }
         }
 
         async function saveConfig() {
@@ -313,31 +327,40 @@
             setTimeout(() => document.getElementById('save-msg').innerText = '', 3000);
         }
 
+        // Tải danh sách điểm danh (Sửa lỗi dậm chân ở "Đang tải dữ liệu...")
         async function loadDiemDanhList() {
             const dateVal = document.getElementById('filter-view-date').value;
-            const res = await fetch(`/api/admin/list-diem-danh?date=${dateVal}`);
-            const list = await res.json();
             const tbody = document.getElementById('tbl-diem-danh');
-            tbody.innerHTML = '';
+            
+            try {
+                const res = await fetch(`/api/admin/list-diem-danh?date=${dateVal}`);
+                if (!res.ok) throw new Error("API Lỗi");
+                
+                const list = await res.json();
+                tbody.innerHTML = '';
 
-            if (list.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7">Không có dữ liệu điểm danh cho ngày này.</td></tr>';
-                return;
+                if (!Array.isArray(list) || list.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7">Không có dữ liệu điểm danh cho ngày này.</td></tr>';
+                    return;
+                }
+
+                list.forEach((item, index) => {
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${index + 1}</td>
+                            <td><b>${item.mssv}</b></td>
+                            <td>${item.ho_ten}</td>
+                            <td>${item.ngay}</td>
+                            <td>${item.thoi_gian}</td>
+                            <td><small>${item.device_id ? item.device_id.substring(0, 8) + '...' : 'N/A'}</small></td>
+                            <td><button class="btn-delete" onclick="deleteRecord(${item.id})">Xóa</button></td>
+                        </tr>
+                    `;
+                });
+            } catch (err) {
+                console.error("Lỗi tải điểm danh:", err);
+                tbody.innerHTML = '<tr><td colspan="7" style="color:red;">Không thể kết nối danh sách điểm danh hoặc dữ liệu rỗng.</td></tr>';
             }
-
-            list.forEach((item, index) => {
-                tbody.innerHTML += `
-                    <tr>
-                        <td>${index + 1}</td>
-                        <td><b>${item.mssv}</b></td>
-                        <td>${item.ho_ten}</td>
-                        <td>${item.ngay}</td>
-                        <td>${item.thoi_gian}</td>
-                        <td><small>${item.device_id ? item.device_id.substring(0, 8) + '...' : 'N/A'}</small></td>
-                        <td><button class="btn-delete" onclick="deleteRecord(${item.id})">Xóa</button></td>
-                    </tr>
-                `;
-            });
         }
 
         async function deleteRecord(id) {
@@ -351,30 +374,32 @@
         }
 
         async function loadBaoLoiList() {
-            const res = await fetch('/api/admin/list-bao-loi');
-            const list = await res.json();
-            const tbody = document.getElementById('tbl-bao-loi');
-            tbody.innerHTML = '';
+            try {
+                const res = await fetch('/api/admin/list-bao-loi');
+                const list = await res.json();
+                const tbody = document.getElementById('tbl-bao-loi');
+                tbody.innerHTML = '';
 
-            if (list.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5">Không có yêu cầu báo lỗi nào chưa xử lý.</td></tr>';
-                return;
-            }
+                if (!Array.isArray(list) || list.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5">Không có yêu cầu báo lỗi nào chưa xử lý.</td></tr>';
+                    return;
+                }
 
-            list.forEach(item => {
-                tbody.innerHTML += `
-                    <tr>
-                        <td>${item.thoi_gian} (${item.ngay})</td>
-                        <td><b>${item.mssv}</b></td>
-                        <td>${item.ho_ten}</td>
-                        <td><span class="badge-err">${item.ly_do}</span></td>
-                        <td>
-                            <button class="btn-resolve" onclick="resolveBaoLoi(${item.id}, '${item.device_id}', 'reset')">Reset Thiết Bị</button>
-                            <button class="btn-delete" onclick="resolveBaoLoi(${item.id}, '${item.device_id}', 'dismiss')">Bỏ Qua</button>
-                        </td>
-                    </tr>
-                `;
-            });
+                list.forEach(item => {
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${item.thoi_gian} (${item.ngay})</td>
+                            <td><b>${item.mssv}</b></td>
+                            <td>${item.ho_ten}</td>
+                            <td><span class="badge-err">${item.ly_do}</span></td>
+                            <td>
+                                <button class="btn-resolve" onclick="resolveBaoLoi(${item.id}, '${item.device_id}', 'reset')">Reset Thiết Bị</button>
+                                <button class="btn-delete" onclick="resolveBaoLoi(${item.id}, '${item.device_id}', 'dismiss')">Bỏ Qua</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+            } catch(e) {}
         }
 
         async function resolveBaoLoi(id, device_id, action) {
