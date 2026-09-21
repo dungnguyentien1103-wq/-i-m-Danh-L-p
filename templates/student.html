@@ -3,175 +3,196 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Điểm Danh Sinh Viên (Phiên Bản Premium)</title>
+    <title>Điểm Danh Sinh Viên</title>
     <style>
-        body { font-family: Arial, sans-serif; background: #eef2f3; margin: 0; padding: 20px; }
-        .card { max-width: 450px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        body { font-family: Arial, sans-serif; background: #eef2f3; margin: 0; padding: 15px; }
+        .card { max-width: 450px; background: white; margin: 20px auto; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
         h2 { text-align: center; color: #333; margin-top: 0; }
-        .badge-premium { background: linear-gradient(45deg, #ff8c00, #ff0080); color: white; padding: 3px 8px; border-radius: 10px; font-size: 11px; vertical-align: middle; }
-        input, button, textarea { width: 100%; padding: 12px; margin-top: 10px; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; }
-        .btn-checkin { background: #28a745; color: white; font-size: 16px; font-weight: bold; border: none; cursor: pointer; }
-        .btn-checkin:hover { background: #218838; }
-        .welcome-box { background: #e7f5ff; border: 1px solid #a5d8ff; padding: 12px; border-radius: 6px; margin-bottom: 15px; }
-        .link-btn { color: #007bff; text-decoration: underline; cursor: pointer; font-size: 13px; text-align: center; display: block; margin-top: 12px; }
-        #status-msg { text-align: center; font-weight: bold; margin-top: 15px; }
+        .badge-premium { background: linear-gradient(45deg, #ff8c00, #ff0080); color: white; font-size: 11px; padding: 3px 8px; border-radius: 10px; font-weight: bold; float: right; }
+        .form-group { margin-bottom: 15px; }
+        label { font-weight: bold; font-size: 14px; display: block; margin-bottom: 5px; }
+        input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+        .btn { width: 100%; padding: 12px; border: none; border-radius: 6px; font-weight: bold; font-size: 16px; cursor: pointer; margin-top: 10px; }
+        .btn-checkin { background: #28a745; color: white; }
+        .btn-premium { background: #6f42c1; color: white; }
+        .status-box { padding: 12px; border-radius: 6px; margin-top: 15px; text-align: center; font-weight: bold; display: none; }
+        .status-success { background: #d4edda; color: #155724; }
+        .status-error { background: #f8d7da; color: #721c24; }
+        .link-toggle { text-align: center; margin-top: 15px; font-size: 13px; }
+        .link-toggle a { color: #007bff; text-decoration: none; font-weight: bold; }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h2>Điểm Danh Lớp Học <span class="badge-premium">PRO 1-CLICK</span></h2>
+    <div class="card">
+        <span class="badge-premium">PREMIUM ENABLED</span>
+        <h2>Điểm Danh Lớp Học</h2>
 
-    <!-- KHUNG ĐĂNG NHẬP / LƯU THÔNG TIN -->
-    <div id="login-box">
-        <p style="font-size: 13px; color: #666; text-align: center;">Đăng nhập 1 lần duy nhất - Các lần sau chỉ cần bấm nút Điểm Danh!</p>
-        <input type="email" id="acc_email" placeholder="Email (Google / Microsoft trường)">
-        <input type="text" id="acc_mssv" placeholder="Mã Số Sinh Viên (MSSV)">
-        <input type="text" id="acc_hoten" placeholder="Họ và Tên Sinh Viên">
-        <button type="button" style="background: #007bff; color: white; border: none; font-weight: bold;" onclick="saveAccount()">Lưu Tài Khoản & Điểm Danh</button>
-    </div>
-
-    <!-- KHUNG ĐIỂM DANH 1-CLICK (HIỆN KHI ĐÃ ĐĂNG NHẬP) -->
-    <div id="quick-checkin-box" style="display: none;">
-        <div class="welcome-box">
-            <b>Xin chào:</b> <span id="user-name-display"></span><br>
-            <b>MSSV:</b> <span id="user-mssv-display"></span>
-            <span class="link-btn" style="display: inline; float: right;" onclick="logout()">[Đổi TK]</span>
+        <!-- KHUNG DÀNH CHO PREMIUM (TỰ ĐỘNG LƯU SESSION) -->
+        <div id="premium-welcome-box" style="display: none; background: #f0f4ff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #cce5ff;">
+            <p style="margin: 0; font-weight: bold; color: #004085;" id="user-info-text">Xin chào: ...</p>
+            <small style="color: #666;">Đã xác thực tài khoản. Bấm bên dưới để điểm danh ngay!</small>
+            <br><a href="#" onclick="logout()" style="color: #dc3545; font-size: 12px; font-weight: bold;">[Đăng xuất / Đổi tài khoản]</a>
         </div>
-        <button class="btn-checkin" onclick="startCheckin()">🎯 ĐIỂM DANH NGAY (1-TOUCH)</button>
+
+        <!-- KHUNG ĐĂNG NHẬP / NHẬP CƠ BẢN -->
+        <div id="form-inputs">
+            <div class="form-group">
+                <label>Mã Số Sinh Viên (MSSV):</label>
+                <input type="text" id="mssv" placeholder="VD: 24110001">
+            </div>
+            <div class="form-group">
+                <label>Họ và Tên:</label>
+                <input type="text" id="ho_ten" placeholder="VD: Nguyễn Văn A">
+            </div>
+            <div class="form-group" id="email-group">
+                <label>Email Sinh Viên (Dùng cho bản Premium):</label>
+                <input type="email" id="email" placeholder="VD: sv@truong.edu.vn">
+            </div>
+            <button class="btn btn-premium" id="btn-save-session" onclick="savePremiumAuth()">💾 Lưu Tài Khoản (Đăng Nhập 1-Chạm)</button>
+        </div>
+
+        <button class="btn btn-checkin" onclick="thucHienDiemDanh()">📍 ĐIỂM DANH NGAY</button>
+
+        <div id="status-msg" class="status-box"></div>
+
+        <!-- PHẦN BÁO LỖI THIẾT BỊ -->
+        <div class="link-toggle">
+            Gặp sự cố thiết bị/GPS? <a href="#" onclick="toggleBaoLoi(); return false;">Gửi báo lỗi cho Cán sự</a>
+        </div>
+
+        <div id="form-bao-loi" style="display: none; background: #fff3cd; padding: 15px; border-radius: 8px; margin-top: 15px; border: 1px solid #ffeeba;">
+            <h4 style="margin-top:0;">Gửi Yêu Cầu Báo Lỗi</h4>
+            <input type="text" id="bl_mssv" placeholder="Nhập MSSV" style="margin-bottom:8px;">
+            <input type="text" id="bl_hoten" placeholder="Nhập Họ Tên" style="margin-bottom:8px;">
+            <textarea id="bl_lydo" style="width:100%; height:50px; border-radius:4px; padding:5px;" placeholder="Lý do (VD: Đổi điện thoại, lỗi GPS...)"></textarea>
+            <button class="btn" style="background:#ffc107; color:#000;" onclick="sendBaoLoi()">Gửi Yêu Cầu</button>
+        </div>
     </div>
 
-    <div id="status-msg"></div>
-
-    <!-- NÚT & FORM BÁO LỖI -->
-    <span class="link-btn" onclick="toggleBaoLoi()">Gặp sự cố thiết bị/GPS? Gửi báo lỗi cho Cán sự</span>
-
-    <div id="bao-loi-box" style="display: none; background: #fff3cd; padding: 15px; border-radius: 8px; margin-top: 15px;">
-        <h4 style="margin: 0 0 10px 0;">Yêu Cầu Reset Thiết Bị</h4>
-        <input type="text" id="bl_mssv" placeholder="MSSV">
-        <input type="text" id="bl_hoten" placeholder="Họ tên">
-        <textarea id="bl_lydo" placeholder="Lý do lỗi (VD: Đổi điện thoại, định vị sai...)"></textarea>
-        <button style="background: #ffc107; border: none; font-weight: bold; margin-top: 8px;" onclick="sendBaoLoi()">Gửi Báo Lỗi</button>
-    </div>
-</div>
-
-<script>
-    // Tự sinh hoặc lấy Device ID duy nhất của trình duyệt
-    let deviceId = localStorage.getItem('app_device_id');
-    if (!deviceId) {
-        deviceId = 'dev_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
-        localStorage.setItem('app_device_id', deviceId);
-    }
-
-    document.addEventListener("DOMContentLoaded", () => {
-        checkAutoLogin();
-    });
-
-    function checkAutoLogin() {
-        const session = JSON.parse(localStorage.getItem('student_session') || '{}');
-        if (session.mssv && session.hoTen) {
-            document.getElementById('login-box').style.display = 'none';
-            document.getElementById('quick-checkin-box').style.display = 'block';
-            document.getElementById('user-name-display').innerText = session.hoTen;
-            document.getElementById('user-mssv-display').innerText = session.mssv;
-        } else {
-            document.getElementById('login-box').style.display = 'block';
-            document.getElementById('quick-checkin-box').style.display = 'none';
-        }
-    }
-
-    function saveAccount() {
-        const email = document.getElementById('acc_email').value;
-        const mssv = document.getElementById('acc_mssv').value;
-        const hoTen = document.getElementById('acc_hoten').value;
-
-        if (!mssv || !hoTen) {
-            alert("Vui lòng điền đầy đủ MSSV và Họ Tên!");
-            return;
+    <script>
+        // Khởi tạo Device ID duy nhất lưu ở trình duyệt
+        let deviceId = localStorage.getItem('user_device_id');
+        if (!deviceId) {
+            deviceId = 'dev_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+            localStorage.setItem('user_device_id', deviceId);
         }
 
-        localStorage.setItem('student_session', JSON.stringify({ email, mssv, hoTen }));
-        checkAutoLogin();
-        startCheckin();
-    }
+        // Kiểm tra Auto-Login khi tải trang (Premium Feature)
+        document.addEventListener("DOMContentLoaded", () => {
+            checkSavedSession();
+        });
 
-    function logout() {
-        localStorage.removeItem('student_session');
-        checkAutoLogin();
-    }
-
-    function startCheckin() {
-        const session = JSON.parse(localStorage.getItem('student_session') || '{}');
-        const msg = document.getElementById('status-msg');
-        msg.style.color = 'blue';
-        msg.innerText = "Đang kiểm tra vị trí GPS...";
-
-        if ("geolocation" in navigator) {
-            navigator.geolocation.getCurrentPosition(
-                (pos) => sendData(session, pos.coords.latitude, pos.coords.longitude),
-                (err) => sendData(session, null, null),
-                { enableHighAccuracy: true, timeout: 5000 }
-            );
-        } else {
-            sendData(session, null, null);
+        function checkSavedSession() {
+            const savedUser = JSON.parse(localStorage.getItem('student_premium_session'));
+            if (savedUser && savedUser.mssv) {
+                document.getElementById('mssv').value = savedUser.mssv;
+                document.getElementById('ho_ten').value = savedUser.ho_ten;
+                
+                document.getElementById('user-info-text').innerText = `Xin chào: ${savedUser.ho_ten} (${savedUser.mssv})`;
+                document.getElementById('premium-welcome-box').style.display = 'block';
+                document.getElementById('form-inputs').style.display = 'none'; // Ẩn ô nhập cho gọn
+            }
         }
-    }
 
-    async function sendData(session, lat, lng) {
-        const msg = document.getElementById('status-msg');
-        const payload = {
-            mssv: session.mssv,
-            ho_ten: session.hoTen,
-            email: session.email,
-            device_id: deviceId,
-            lat: lat,
-            lng: lng
-        };
+        async function savePremiumAuth() {
+            const mssv = document.getElementById('mssv').value.trim();
+            const ho_ten = document.getElementById('ho_ten').value.trim();
+            const email = document.getElementById('email').value.trim();
 
-        try {
-            const res = await fetch('/api/student/checkin', {
+            if (!mssv || !ho_ten || !email) {
+                alert("Vui lòng điền đủ MSSV, Họ tên và Email!");
+                return;
+            }
+
+            const res = await fetch('/api/student/auth', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ mssv, ho_ten, email })
             });
             const data = await res.json();
-            
+
             if (data.success) {
-                msg.style.color = 'green';
-                msg.innerText = data.message;
+                localStorage.setItem('student_premium_session', JSON.stringify({ mssv, ho_ten, email }));
+                alert("Đã kích hoạt tính năng Premium! Lần sau bạn không cần nhập lại nữa.");
+                checkSavedSession();
             } else {
-                msg.style.color = 'red';
-                msg.innerText = data.message;
+                alert(data.message);
             }
-        } catch (e) {
-            msg.style.color = 'red';
-            msg.innerText = "Lỗi kết nối máy chủ!";
-        }
-    }
-
-    function toggleBaoLoi() {
-        const box = document.getElementById('bao-loi-box');
-        box.style.display = box.style.display === 'none' ? 'block' : 'none';
-    }
-
-    async function sendBaoLoi() {
-        const mssv = document.getElementById('bl_mssv').value;
-        const ho_ten = document.getElementById('bl_hoten').value;
-        const ly_do = document.getElementById('bl_lydo').value;
-
-        if (!mssv || !ho_ten || !ly_do) {
-            alert("Vui lòng điền đủ thông tin báo lỗi!");
-            return;
         }
 
-        await fetch('/api/student/bao-loi', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mssv, ho_ten, ly_do, device_id: deviceId })
-        });
-        alert("Đã gửi báo lỗi thành công! Cán sự sẽ xem xét reset thiết bị cho bạn.");
-        toggleBaoLoi();
-    }
-</script>
+        function logout() {
+            localStorage.removeItem('student_premium_session');
+            document.getElementById('premium-welcome-box').style.display = 'none';
+            document.getElementById('form-inputs').style.display = 'block';
+            document.getElementById('mssv').value = '';
+            document.getElementById('ho_ten').value = '';
+        }
+
+        function thucHienDiemDanh() {
+            const mssv = document.getElementById('mssv').value.trim();
+            const ho_ten = document.getElementById('ho_ten').value.trim();
+
+            if (!mssv || !ho_ten) {
+                showStatus("Vui lòng nhập MSSV và Họ tên!", false);
+                return;
+            }
+
+            showStatus("Đang lấy vị trí GPS...", true);
+
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition((pos) => {
+                    sendCheckin(mssv, ho_ten, pos.coords.latitude, pos.coords.longitude);
+                }, (err) => {
+                    // Nếu lỗi GPS vẫn thử gửi để backend kiểm tra xem có bắt bắt buộc GPS không
+                    sendCheckin(mssv, ho_ten, null, null);
+                }, { enableHighAccuracy: true, timeout: 7000 });
+            } else {
+                sendCheckin(mssv, ho_ten, null, null);
+            }
+        }
+
+        async function sendCheckin(mssv, ho_ten, lat, lng) {
+            try {
+                const res = await fetch('/api/student/checkin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mssv, ho_ten, device_id: deviceId, lat, lng })
+                });
+                const data = await res.json();
+                showStatus(data.message, data.success);
+            } catch (e) {
+                showStatus("Không thể kết nối tới máy chủ điểm danh!", false);
+            }
+        }
+
+        function showStatus(msg, isSuccess) {
+            const box = document.getElementById('status-msg');
+            box.innerText = msg;
+            box.className = 'status-box ' + (isSuccess ? 'status-success' : 'status-error');
+            box.style.display = 'block';
+        }
+
+        function toggleBaoLoi() {
+            const f = document.getElementById('form-bao-loi');
+            f.style.display = f.style.display === 'none' ? 'block' : 'none';
+        }
+
+        async function sendBaoLoi() {
+            const mssv = document.getElementById('bl_mssv').value;
+            const ho_ten = document.getElementById('bl_hoten').value;
+            const ly_do = document.getElementById('bl_lydo').value;
+
+            if(!mssv || !ho_ten || !ly_do) { alert("Vui lòng nhập đầy đủ!"); return; }
+
+            await fetch('/api/student/bao-loi', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ mssv, ho_ten, ly_do, device_id: deviceId })
+            });
+            alert("Đã gửi báo lỗi thành công!");
+            toggleBaoLoi();
+        }
+    </script>
 </body>
 </html>
