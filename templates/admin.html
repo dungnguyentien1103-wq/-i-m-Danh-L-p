@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Bảng Điều Hành Cán Sự Lớp</title>
-    <!-- Nhúng Leaflet OpenStreetMap (Thay thế Google Maps API miễn phí, không cần đăng ký API Key) -->
+    <!-- Nhúng Leaflet OpenStreetMap -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
@@ -15,11 +15,16 @@
         .btn-export { background: #17a2b8; color: white; border: none; cursor: pointer; padding: 8px 16px; border-radius: 4px; }
         .btn-delete { background: #dc3545; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; }
         .btn-resolve { background: #007bff; color: white; border: none; padding: 4px 8px; cursor: pointer; border-radius: 3px; }
+        .btn-quick { background: #6c757d; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 3px; }
+        .btn-quick:hover { background: #495057; }
+        .btn-apply { background: #007bff; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 5px; }
         #map { height: 320px; width: 100%; border-radius: 8px; margin-top: 10px; border: 1px solid #ccc; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
         th { background-color: #e9ecef; }
         .badge-err { background: #ffc107; color: #212529; padding: 3px 6px; border-radius: 4px; font-size: 12px; }
+        .coord-group { display: flex; gap: 15px; margin-top: 10px; flex-wrap: wrap; }
+        .coord-box { flex: 1; min-width: 200px; background: #f8f9fa; padding: 10px; border-radius: 6px; border: 1px solid #e9ecef; }
     </style>
 </head>
 <body>
@@ -48,23 +53,36 @@
         </select>
 
         <div id="map-container" style="display:none; margin-top: 15px;">
-            <p><i><b>Mẹo:</b> Bấm trực tiếp vào bản đồ bên dưới để ghim địa điểm nhận điểm danh (Lớp học/Sân trường).</i></p>
-            <div id="map"></div>
+            <p><i><b>Mẹo:</b> Bạn có thể gõ trực tiếp tọa độ bên dưới rồi bấm <b>"Áp dụng tọa độ"</b>, hoặc click trực tiếp lên bản đồ.</i></p>
             
-            <div style="display: flex; gap: 10px; margin-top: 10px;">
-                <div>
+            <div class="coord-group">
+                <div class="coord-box">
                     <label>Vĩ độ (Latitude):</label>
-                    <input type="text" id="class_lat" readonly>
+                    <input type="number" step="any" id="class_lat" style="width: 100%;" placeholder="Ví dụ: 10.762622">
                 </div>
-                <div>
+                <div class="coord-box">
                     <label>Kinh độ (Longitude):</label>
-                    <input type="text" id="class_lng" readonly>
+                    <input type="number" step="any" id="class_lng" style="width: 100%;" placeholder="Ví dụ: 106.660172">
                 </div>
-                <div>
-                    <label>Bán kính cho phép (Mét):</label>
-                    <input type="number" id="max_distance_meters" value="100" min="50" max="500">
+                <div class="coord-box" style="flex: 0 0 100%;">
+                    <button class="btn-apply" onclick="applyManualCoords()">📍 Áp Dụng Tọa Độ Nhập Tay Vào Bản Đồ</button>
+                    <button class="btn-quick" style="background:#17a2b8;" onclick="getCurrentGPS()">🎯 Lấy Tọa Độ Hiện Tại Của Tôi</button>
                 </div>
             </div>
+
+            <div class="coord-group">
+                <div class="coord-box" style="flex: 1;">
+                    <label>Bán kính cho phép (Mét):</label>
+                    <input type="number" id="max_distance_meters" value="100" min="10" max="2000" style="width: 120px;" oninput="updateRadiusFromInput()">
+                    <span style="margin-left: 10px;">Chọn nhanh:</span>
+                    <button class="btn-quick" onclick="setQuickRadius(50)">50m</button>
+                    <button class="btn-quick" onclick="setQuickRadius(100)">100m</button>
+                    <button class="btn-quick" onclick="setQuickRadius(200)">200m</button>
+                    <button class="btn-quick" onclick="setQuickRadius(500)">500m</button>
+                </div>
+            </div>
+
+            <div id="map"></div>
         </div>
 
         <br>
@@ -148,35 +166,82 @@
         });
 
         function initMap(lat, lng, radius) {
-            if (map) return;
-            map = L.map('map').setView([lat, lng], 16);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap'
-            }).addTo(map);
+            if (!map) {
+                map = L.map('map').setView([lat, lng], 16);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap'
+                }).addTo(map);
 
-            marker = L.marker([lat, lng], {draggable: true}).addTo(map);
-            circle = L.circle([lat, lng], {radius: radius, color: 'red', fillColor: '#f03', fillOpacity: 0.2}).addTo(map);
+                marker = L.marker([lat, lng], {draggable: true}).addTo(map);
+                circle = L.circle([lat, lng], {radius: radius, color: 'red', fillColor: '#f03', fillOpacity: 0.2}).addTo(map);
 
-            function updateCoords(newLat, newLng) {
-                document.getElementById('class_lat').value = newLat.toFixed(6);
-                document.getElementById('class_lng').value = newLng.toFixed(6);
-                marker.setLatLng([newLat, newLng]);
-                circle.setLatLng([newLat, newLng]);
+                map.on('click', (e) => {
+                    updateCoordsUI(e.latlng.lat, e.latlng.lng);
+                });
+
+                marker.on('dragend', (e) => {
+                    const pos = marker.getLatLng();
+                    updateCoordsUI(pos.lat, pos.lng);
+                });
+            } else {
+                updateMapPosition(lat, lng, radius);
             }
+        }
 
-            map.on('click', (e) => {
-                updateCoords(e.latlng.lat, e.latlng.lng);
-            });
+        // Cập nhật vị trí Marker và Circle trên bản đồ
+        function updateMapPosition(lat, lng, radius) {
+            if (map && marker && circle) {
+                const newLatLng = new L.LatLng(lat, lng);
+                marker.setLatLng(newLatLng);
+                circle.setLatLng(newLatLng);
+                if (radius) circle.setRadius(radius);
+                map.panTo(newLatLng);
+            }
+        }
 
-            marker.on('dragend', (e) => {
-                const pos = marker.getLatLng();
-                updateCoords(pos.lat, pos.lng);
-            });
+        // Cập nhật giá trị vào các ô input khi bấm trên bản đồ
+        function updateCoordsUI(newLat, newLng) {
+            document.getElementById('class_lat').value = parseFloat(newLat).toFixed(6);
+            document.getElementById('class_lng').value = parseFloat(newLng).toFixed(6);
+            updateMapPosition(newLat, newLng);
+        }
 
-            document.getElementById('max_distance_meters').addEventListener('input', (e) => {
-                const r = parseFloat(e.target.value) || 100;
-                circle.setRadius(r);
-            });
+        // Áp dụng tọa độ khi cán sự tự gõ thủ công
+        function applyManualCoords() {
+            const lat = parseFloat(document.getElementById('class_lat').value);
+            const lng = parseFloat(document.getElementById('class_lng').value);
+            const radius = parseFloat(document.getElementById('max_distance_meters').value) || 100;
+
+            if (isNaN(lat) || isNaN(lng)) {
+                alert("Vui lòng nhập vĩ độ và kinh độ hợp lệ!");
+                return;
+            }
+            updateMapPosition(lat, lng, radius);
+        }
+
+        // Lấy tọa độ vị trí hiện tại của thiết bị cán sự
+        function getCurrentGPS() {
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition((position) => {
+                    updateCoordsUI(position.coords.latitude, position.coords.longitude);
+                }, (err) => {
+                    alert("Không thể lấy vị trí hiện tại. Vui lòng bật định vị GPS trên trình duyệt!");
+                });
+            } else {
+                alert("Trình duyệt không hỗ trợ định vị!");
+            }
+        }
+
+        // Thay đổi bán kính nhanh bằng các nút bấm 50m, 100m...
+        function setQuickRadius(meters) {
+            document.getElementById('max_distance_meters').value = meters;
+            updateRadiusFromInput();
+        }
+
+        // Cập nhật vòng tròn bán kính khi nhập số
+        function updateRadiusFromInput() {
+            const r = parseFloat(document.getElementById('max_distance_meters').value) || 100;
+            if (circle) circle.setRadius(r);
         }
 
         function toggleMapDisplay() {
