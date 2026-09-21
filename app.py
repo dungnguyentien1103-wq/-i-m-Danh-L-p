@@ -170,7 +170,34 @@ def page_super_admin():
 def logout():
     session.clear()
     return redirect(url_for('index_student'))
+# Xử lý đăng nhập Quản trị viên / Cán sự lớp
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.json or {}
+    username = data.get('username', '').strip()
+    password = data.get('password', '').strip()
 
+    if not username or not password:
+        return jsonify({'success': False, 'message': 'Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu!'})
+
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+
+    if db_type == "postgres":
+        cursor.execute("SELECT * FROM class_admins WHERE username = %s AND password = %s", (username, password))
+    else:
+        cursor.execute("SELECT * FROM class_admins WHERE username = ? AND password = ?", (username, password))
+    
+    admin = cursor.fetchone()
+    conn.close()
+
+    if admin:
+        session['username'] = admin['username']
+        # Kiểm tra nếu tài khoản là admin gốc hoặc có cờ phân quyền super
+        is_super = 1 if admin['username'] == 'admin' or (hasattr(admin, 'keys') and 'is_super' in admin and admin['is_super'] == 1) else 0
+        return jsonify({'success': True, 'is_super': is_super})
+    else:
+        return jsonify({'success': False, 'message': 'Sai tên đăng nhập hoặc mật khẩu!'})
 # ==========================================
 # 5. API DÀNH CHO SINH VIÊN
 # ==========================================
