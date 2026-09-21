@@ -3,71 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Điểm Danh Sinh Viên</title>
+    <title>Sinh Viên - Điểm Danh Online</title>
     <style>
         body { font-family: Arial, sans-serif; background: #eef2f3; margin: 0; padding: 15px; }
         .card { max-width: 450px; background: white; margin: 20px auto; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
         h2 { text-align: center; color: #333; margin-top: 0; }
+        .badge { display: inline-block; padding: 4px 8px; background: #ffc107; color: #000; border-radius: 4px; font-size: 12px; font-weight: bold; }
         .badge-premium { background: linear-gradient(45deg, #ff8c00, #ff0080); color: white; font-size: 11px; padding: 3px 8px; border-radius: 10px; font-weight: bold; float: right; }
         .form-group { margin-bottom: 15px; }
         label { font-weight: bold; font-size: 14px; display: block; margin-bottom: 5px; }
         input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
-        .btn { width: 100%; padding: 12px; border: none; border-radius: 6px; font-weight: bold; font-size: 16px; cursor: pointer; margin-top: 10px; }
+        button, .btn { width: 100%; padding: 12px; border: none; border-radius: 6px; font-weight: bold; font-size: 16px; cursor: pointer; margin-top: 10px; }
         .btn-checkin { background: #28a745; color: white; }
-        .btn-premium { background: #6f42c1; color: white; }
-        .status-box { padding: 12px; border-radius: 6px; margin-top: 15px; text-align: center; font-weight: bold; display: none; }
-        .status-success { background: #d4edda; color: #155724; }
-        .status-error { background: #f8d7da; color: #721c24; }
-        .link-toggle { text-align: center; margin-top: 15px; font-size: 13px; }
-        .link-toggle a { color: #007bff; text-decoration: none; font-weight: bold; }
-    </style>
-</head>
-<body>
-
-    <div class="card">
-        <span class="badge-premium">PREMIUM ENABLED</span>
-        <h2>Điểm Danh Lớp Học</h2>
-
-        <!-- KHUNG DÀNH CHO PREMIUM (TỰ ĐỘNG LƯU SESSION) -->
-        <div id="premium-welcome-box" style="display: none; background: #f0f4ff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #cce5ff;">
-            <p style="margin: 0; font-weight: bold; color: #004085;" id="user-info-text">Xin chào: ...</p>
-            <small style="color: #666;">Đã xác thực tài khoản. Bấm bên dưới để điểm danh ngay!</small>
-            <br><a href="#" onclick="logout()" style="color: #dc3545; font-size: 12px; font-weight: bold;">[Đăng xuất / Đổi tài khoản]</a>
-        </div>
-
-        <!-- KHUNG ĐĂNG NHẬP / NHẬP CƠ BẢN -->
-        <div id="form-inputs">
-            <div class="form-group">
-                <label>Mã Số Sinh Viên (MSSV):</label>
-                <input type="text" id="mssv" placeholder="VD: 24110001">
-            </div>
-            <div class="form-group">
-                <label>Họ và Tên:</label>
-                <input type="text" id="ho_ten" placeholder="VD: Nguyễn Văn A">
-            </div>
-            <div class="form-group" id="email-group">
-                <label>Email Sinh Viên (Dùng cho bản Premium):</label>
-                <input type="email" id="email" placeholder="VD: sv@truong.edu.vn">
-            </div>
-            <button class="btn btn-premium" id="btn-save-session" onclick="savePremiumAuth()">💾 Lưu Tài Khoản (Đăng Nhập 1-Chạm)</button>
-        </div>
-
-      <!DOCTYPE html>
-<html lang="vi">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sinh Viên - Điểm Danh Online</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f6f9; }
-        .card { background: white; padding: 20px; border-radius: 8px; max-width: 450px; margin: 0 auto; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
-        button { width: 100%; padding: 10px; background-color: #28a745; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; }
-        button:hover { background-color: #218838; }
-        .badge { display: inline-block; padding: 4px 8px; background: #ffc107; color: #000; border-radius: 4px; font-size: 12px; font-weight: bold; }
-        .alert { padding: 10px; margin-top: 15px; border-radius: 4px; display: none; }
+        .btn-checkin:hover { background: #218838; }
+        .btn-error { background-color: #ffc107; color: #000; }
+        .alert { padding: 12px; border-radius: 6px; margin-top: 15px; text-align: center; font-weight: bold; display: none; }
         .alert-success { background: #d4edda; color: #155724; }
         .alert-danger { background: #f8d7da; color: #721c24; }
     </style>
@@ -75,29 +25,33 @@
 <body>
 
 <div class="card">
+    <span class="badge-premium">PREMIUM ENABLED</span>
     <h2>Điểm Danh Sinh Viên <span id="premiumBadge" class="badge" style="display:none;">PREMIUM 1-CLICK</span></h2>
+    
     <div id="alertBox" class="alert"></div>
 
     <form id="checkinForm">
         <div class="form-group">
-            <label>Mã Sinh Viên:</label>
-            <input type="text" id="student_id" required onblur="checkStudentStatus()">
+            <label for="student_id">Mã Số Sinh Viên (MSSV):</label>
+            <input type="text" id="student_id" placeholder="VD: 24110001" required onblur="checkStudentStatus()">
         </div>
 
         <div id="extraFields">
             <div class="form-group">
-                <label>Họ và Tên:</label>
-                <input type="text" id="full_name">
+                <label for="full_name">Họ và Tên:</label>
+                <input type="text" id="full_name" placeholder="VD: Nguyễn Văn A">
             </div>
             <div class="form-group">
-                <label>Mã Lớp:</label>
-                <input type="text" id="class_code">
+                <label for="class_code">Mã Lớp:</label>
+                <input type="text" id="class_code" placeholder="VD: CNTT K65">
             </div>
         </div>
 
-        <button type="button" onclick="submitCheckin()">Thực Hiện Điểm Danh</button>
+        <button type="button" class="btn btn-checkin" onclick="submitCheckin()">Thực Hiện Điểm Danh</button>
+        <button type="button" class="btn btn-error" onclick="sendErrorReport()">⚠️ Báo Lỗi Sự Cố Điểm Danh</button>
     </form>
-    <p style="text-align: center; margin-top: 15px;"><a href="/privacy-policy">Chính sách & Quyền riêng tư</a></p>
+    
+    <p style="text-align: center; margin-top: 15px;"><a href="/privacy-policy" style="color: #007bff; text-decoration: none;">Chính sách & Quyền riêng tư</a></p>
 </div>
 
 <script>
@@ -106,7 +60,7 @@
 
     // Tự động khôi phục dữ liệu từ localStorage
     window.onload = function() {
-        if(localStorage.getItem('saved_student_id')) {
+        if (localStorage.getItem('saved_student_id')) {
             document.getElementById('student_id').value = localStorage.getItem('saved_student_id');
             checkStudentStatus();
         }
@@ -116,31 +70,35 @@
         const studentId = document.getElementById('student_id').value.trim();
         if (!studentId) return;
 
-        const res = await fetch('/api/student/check-status', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ student_id: studentId })
-        });
-        const data = await res.json();
+        try {
+            const res = await fetch('/api/student/check-status', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ student_id: studentId })
+            });
+            const data = await res.json();
 
-        if (data.registered) {
-            isRegistered = true;
-            hasPremium = data.has_premium;
-            document.getElementById('full_name').value = data.full_name;
-            document.getElementById('class_code').value = data.class_code;
+            if (data.registered) {
+                isRegistered = true;
+                hasPremium = data.has_premium;
+                document.getElementById('full_name').value = data.full_name || '';
+                document.getElementById('class_code').value = data.class_code || '';
 
-            if (hasPremium) {
-                document.getElementById('extraFields').style.display = 'none';
-                document.getElementById('premiumBadge').style.display = 'inline-block';
+                if (hasPremium) {
+                    document.getElementById('extraFields').style.display = 'none';
+                    document.getElementById('premiumBadge').style.display = 'inline-block';
+                } else {
+                    document.getElementById('extraFields').style.display = 'block';
+                    document.getElementById('premiumBadge').style.display = 'none';
+                }
             } else {
+                isRegistered = false;
+                hasPremium = false;
                 document.getElementById('extraFields').style.display = 'block';
                 document.getElementById('premiumBadge').style.display = 'none';
             }
-        } else {
-            isRegistered = false;
-            hasPremium = false;
-            document.getElementById('extraFields').style.display = 'block';
-            document.getElementById('premiumBadge').style.display = 'none';
+        } catch (e) {
+            console.error('Lỗi kiểm tra trạng thái sinh viên:', e);
         }
     }
 
@@ -149,7 +107,7 @@
         alertBox.style.display = 'none';
 
         if (!navigator.geolocation) {
-            alert('Trình duyệt không hỗ trợ định vị GPS!');
+            showAlert('Trình duyệt không hỗ trợ định vị GPS!', false);
             return;
         }
 
@@ -157,6 +115,11 @@
             const studentId = document.getElementById('student_id').value.trim();
             const fullName = document.getElementById('full_name').value.trim();
             const classCode = document.getElementById('class_code').value.trim();
+
+            if (!studentId) {
+                showAlert('Vui lòng nhập Mã sinh viên!', false);
+                return;
+            }
 
             // Đăng ký lần đầu nếu chưa có tài khoản
             if (!isRegistered) {
@@ -172,14 +135,15 @@
                 }
             }
 
-            // Thực hiện Điểm Danh
-            const checkinRes = await fetch('/api/student/checkin', {
+            // Thực hiện Điểm Danh (sử dụng API v2 có kiểm tra Device Fingerprint)
+            const checkinRes = await fetch('/api/student/checkin-v2', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     student_id: studentId,
                     full_name: fullName,
                     class_code: classCode,
+                    device_hash: getDeviceHash(),
                     lat: pos.coords.latitude,
                     lng: pos.coords.longitude
                 })
@@ -202,6 +166,52 @@
         box.innerText = msg;
         box.className = 'alert ' + (isSuccess ? 'alert-success' : 'alert-danger');
         box.style.display = 'block';
+    }
+
+    // Hàm tạo Device Fingerprint chống điểm danh hộ
+    function getDeviceHash() {
+        const raw = navigator.userAgent + navigator.language + screen.width + 'x' + screen.height;
+        let hash = 0;
+        for (let i = 0; i < raw.length; i++) {
+            hash = ((hash << 5) - hash) + raw.charCodeAt(i);
+            hash |= 0;
+        }
+        return 'DEV-' + Math.abs(hash);
+    }
+
+    // Gửi Báo lỗi khi không điểm danh được
+    async function sendErrorReport() {
+        const studentId = document.getElementById('student_id').value.trim();
+        const fullName = document.getElementById('full_name').value.trim();
+        const classCode = document.getElementById('class_code').value.trim();
+
+        if (!studentId) {
+            alert("Vui lòng nhập Mã sinh viên trước khi báo lỗi!");
+            return;
+        }
+
+        const errorType = prompt("Nhập loại lỗi (ví dụ: Lỗi GPS, Không vào được mạng, Thiết bị lỗi):");
+        const description = prompt("Mô tả chi tiết sự cố:");
+
+        if (!errorType || !description) return;
+
+        try {
+            const res = await fetch('/api/student/report-error', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    student_id: studentId,
+                    student_name: fullName,
+                    class_code: classCode,
+                    error_type: errorType,
+                    description: description
+                })
+            });
+            const data = await res.json();
+            alert(data.message);
+        } catch (e) {
+            alert("Gửi báo lỗi thất bại, vui lòng thử lại sau!");
+        }
     }
 </script>
 </body>
