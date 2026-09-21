@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Bảng Điều Hành Cán Sự Lớp</title>
-    <!-- Nhúng Leaflet OpenStreetMap -->
+    <!-- Nhúng Leaflet Engine -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
@@ -18,7 +18,7 @@
         .btn-quick { background: #6c757d; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 3px; }
         .btn-quick:hover { background: #495057; }
         .btn-apply { background: #007bff; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 5px; }
-        #map { height: 320px; width: 100%; border-radius: 8px; margin-top: 10px; border: 1px solid #ccc; }
+        #map { height: 380px; width: 100%; border-radius: 8px; margin-top: 10px; border: 1px solid #ccc; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
         th { background-color: #e9ecef; }
@@ -44,7 +44,7 @@
         <input type="datetime-local" id="close_at">
 
         <hr style="margin: 20px 0;">
-        <h3>Cấu Hình Giới Hạn Vị Trí Bản Đồ (Google Maps / OpenStreetMap)</h3>
+        <h3>Cấu Hình Giới Hạn Vị Trí (Google Maps)</h3>
         
         <label>Chế độ kiểm tra vị trí:</label>
         <select id="network_mode" onchange="toggleMapDisplay()">
@@ -53,7 +53,7 @@
         </select>
 
         <div id="map-container" style="display:none; margin-top: 15px;">
-            <p><i><b>Mẹo:</b> Bạn có thể gõ trực tiếp tọa độ bên dưới rồi bấm <b>"Áp dụng tọa độ"</b>, hoặc click trực tiếp lên bản đồ.</i></p>
+            <p><i><b>Mẹo:</b> Nhập trực tiếp tọa độ bên dưới rồi bấm <b>"Áp dụng"</b>, hoặc kéo Marker trên Google Maps.</i></p>
             
             <div class="coord-group">
                 <div class="coord-box">
@@ -65,8 +65,10 @@
                     <input type="number" step="any" id="class_lng" style="width: 100%;" placeholder="Ví dụ: 106.660172">
                 </div>
                 <div class="coord-box" style="flex: 0 0 100%;">
-                    <button class="btn-apply" onclick="applyManualCoords()">📍 Áp Dụng Tọa Độ Nhập Tay Vào Bản Đồ</button>
+                    <button class="btn-apply" onclick="applyManualCoords()">📍 Áp Dụng Tọa Độ Nhập Tay</button>
                     <button class="btn-quick" style="background:#17a2b8;" onclick="getCurrentGPS()">🎯 Lấy Tọa Độ Hiện Tại Của Tôi</button>
+                    <button class="btn-quick" style="background:#e83e8c;" onclick="switchMapStyle('roadmap')">🗺️ Bản đồ Đường</button>
+                    <button class="btn-quick" style="background:#fd7e14;" onclick="switchMapStyle('satellite')">🛰️ Bản đồ Vệ Tinh</button>
                 </div>
             </div>
 
@@ -93,7 +95,6 @@
     <!-- 2. BÁO CÁO LỖI THIẾT BỊ TỪ SINH VIÊN -->
     <div class="section">
         <h2>2. Danh Sách Yêu Cầu Báo Lỗi Thiết Bị</h2>
-        <p>Nếu sinh viên đổi máy hoặc báo lỗi bị khóa thiết bị, bấm "Reset Thiết Bị" để cho phép điểm danh lại.</p>
         <table>
             <thead>
                 <tr>
@@ -110,9 +111,9 @@
         </table>
     </div>
 
-    <!-- 3. QUẢN LÝ DỮ LIỆU ĐIỂM DANH (XÓA / CHỈNH SỬA) -->
+    <!-- 3. QUẢN LÝ DỮ LIỆU ĐIỂM DANH -->
     <div class="section">
-        <h2>3. Danh Sách Điểm Danh Đã Ghi Nhận (Có thể Xóa/Sửa)</h2>
+        <h2>3. Danh Sách Điểm Danh Đã Ghi Nhận</h2>
         <label>Lọc danh sách theo ngày:</label>
         <input type="date" id="filter-view-date" onchange="loadDiemDanhList()">
         <button onclick="loadDiemDanhList()">Xem Danh Sách</button>
@@ -155,7 +156,8 @@
     </div>
 
     <script>
-        let map, marker, circle;
+        let map, marker, circle, googleTileLayer;
+        let currentMapStyle = 'm'; // 'm' cho Đường phố, 's,h' cho Vệ tinh
 
         document.addEventListener("DOMContentLoaded", async () => {
             document.getElementById('selected_date').value = new Date().toISOString().split('T')[0];
@@ -168,12 +170,16 @@
         function initMap(lat, lng, radius) {
             if (!map) {
                 map = L.map('map').setView([lat, lng], 16);
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '© OpenStreetMap'
+                
+                // Nạp Layer Google Maps
+                googleTileLayer = L.tileLayer('https://{s}.google.com/vt/lyrs=' + currentMapStyle + '&x={x}&y={y}&z={z}', {
+                    maxZoom: 20,
+                    subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+                    attribution: '© Google Maps'
                 }).addTo(map);
 
                 marker = L.marker([lat, lng], {draggable: true}).addTo(map);
-                circle = L.circle([lat, lng], {radius: radius, color: 'red', fillColor: '#f03', fillOpacity: 0.2}).addTo(map);
+                circle = L.circle([lat, lng], {radius: radius, color: 'red', fillColor: '#f03', fillOpacity: 0.25}).addTo(map);
 
                 map.on('click', (e) => {
                     updateCoordsUI(e.latlng.lat, e.latlng.lng);
@@ -185,14 +191,25 @@
                 });
             }
 
-            // Ép Leaflet tính toán lại kích thước khung chứa và di chuyển đến điểm mới
             setTimeout(() => {
                 map.invalidateSize();
                 updateMapPosition(lat, lng, radius);
             }, 300);
         }
 
-        // Cập nhật vị trí Marker và Vòng tròn bán kính trên bản đồ
+        // Chuyển đổi giữa Chế độ Đường Phố và Vệ Tinh Google Maps
+        function switchMapStyle(style) {
+            currentMapStyle = (style === 'satellite') ? 's,h' : 'm';
+            if (googleTileLayer && map) {
+                map.removeLayer(googleTileLayer);
+                googleTileLayer = L.tileLayer('https://{s}.google.com/vt/lyrs=' + currentMapStyle + '&x={x}&y={y}&z={z}', {
+                    maxZoom: 20,
+                    subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+                    attribution: '© Google Maps'
+                }).addTo(map);
+            }
+        }
+
         function updateMapPosition(lat, lng, radius) {
             if (map && marker && circle) {
                 const newLatLng = new L.LatLng(lat, lng);
@@ -203,14 +220,12 @@
             }
         }
 
-        // Cập nhật giá trị vào các ô input khi người dùng click/kéo trên bản đồ
         function updateCoordsUI(newLat, newLng) {
             document.getElementById('class_lat').value = parseFloat(newLat).toFixed(6);
             document.getElementById('class_lng').value = parseFloat(newLng).toFixed(6);
             updateMapPosition(newLat, newLng);
         }
 
-        // Áp dụng tọa độ khi cán sự nhập tay vào ô input
         function applyManualCoords() {
             const lat = parseFloat(document.getElementById('class_lat').value);
             const lng = parseFloat(document.getElementById('class_lng').value);
@@ -223,26 +238,23 @@
             updateMapPosition(lat, lng, radius);
         }
 
-        // Lấy tọa độ vị trí thực tế của cán sự qua thiết bị
         function getCurrentGPS() {
             if ("geolocation" in navigator) {
                 navigator.geolocation.getCurrentPosition((position) => {
                     updateCoordsUI(position.coords.latitude, position.coords.longitude);
                 }, (err) => {
-                    alert("Không thể lấy vị trí hiện tại. Vui lòng bật định vị GPS trên trình duyệt!");
+                    alert("Không thể lấy vị trí hiện tại. Vui lòng bật định vị GPS!");
                 });
             } else {
                 alert("Trình duyệt không hỗ trợ định vị!");
             }
         }
 
-        // Thay đổi nhanh bán kính qua nút bấm (50m, 100m, 200m, 500m)
         function setQuickRadius(meters) {
             document.getElementById('max_distance_meters').value = meters;
             updateRadiusFromInput();
         }
 
-        // Cập nhật vòng tròn bán kính khi thay đổi ô số mét
         function updateRadiusFromInput() {
             const r = parseFloat(document.getElementById('max_distance_meters').value) || 100;
             if (circle) circle.setRadius(r);
@@ -257,7 +269,6 @@
                 const lng = parseFloat(document.getElementById('class_lng').value) || 106.660172;
                 const radius = parseFloat(document.getElementById('max_distance_meters').value) || 100;
                 
-                // Đợi thẻ div hiển thị xong mới nạp bản đồ
                 setTimeout(() => {
                     initMap(lat, lng, radius);
                 }, 150);
